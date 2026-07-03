@@ -45,13 +45,27 @@ autohide_pause_time status
 
 ## 快速开始
 
-首次启动前先复制环境变量文件：
+一行安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/install.sh | bash
+```
+
+脚本会自动拉取本仓库、生成 `.env`、初始化数据目录权限，并询问是否立即启动 Docker 服务。
+
+如果你已经手动克隆了仓库，也可以在项目目录里运行：
+
+```bash
+bash install.sh
+```
+
+手动安装方式仍然可用。首次启动前先复制环境变量文件：
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，至少填写：
+然后编辑 `.env`，至少填写：
 
 ```env
 STEAM_USERNAME=你的Steam账号
