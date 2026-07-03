@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ylty 星露谷玩家 Mod 下载</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <script>
+    (() => {
+      const savedTheme = localStorage.getItem('panel_theme');
+      const theme = savedTheme === 'light' || savedTheme === 'dark'
+        ? savedTheme
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/stardew-theme.css">
+</head>
+<body class="player-public-page">
+  <main class="player-download-shell">
+    <header class="player-download-header">
+      <div>
+        <div class="public-eyebrow">ylty 的星露谷联机面板</div>
+        <h1>玩家 Mod 下载中心</h1>
+        <p>下载服务器要求的玩家本地 Mod，并用版本号和 SHA256 校验是否一致。</p>
+      </div>
+      <img src="/favicon.png" alt="" class="player-download-logo">
+    </header>
+
+    <section class="card public-pack-card">
+      <div>
+        <h2>整包下载</h2>
+        <p id="packStatus">正在读取 Mod 清单...</p>
+      </div>
+      <div class="public-actions">
+        <a class="btn btn-success" id="downloadPackBtn" href="/api/public/mods/client-pack">
+          下载玩家 Mod 包
+        </a>
+        <a class="btn btn-muted" id="manifestBtn" href="/api/public/mods/manifest.json">
+          查看校验清单
+        </a>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <h2>单个 Mod 下载</h2>
+        <div id="manifestMeta" class="public-meta"></div>
+      </div>
+      <div id="publicModsList" class="public-mods-list">
+        <div class="empty-state">正在加载...</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/player-mods.js"></script>
+</body>
+</html>

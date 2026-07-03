@@ -409,6 +409,10 @@ function collectStatus(req = null) {
       controlFile: config.AUTO_PAUSE_FILE,
       controlError: autoPauseControl.error || '',
       control: autoPauseControl,
+      guard: {
+        safeToSwitch: false,
+        blockers: [],
+      },
     },
     gameState: readGameStateBridge(),
     joinability: {
@@ -432,6 +436,20 @@ function collectStatus(req = null) {
       saveLoaded: false,
       multiplayerReady: false,
       joinable: false,
+    },
+    connection: {
+      joinIp: '',
+      joinPort: 24642,
+      online: 0,
+      max: 4,
+      source: 'unknown',
+      trusted: false,
+      refreshedAt: null,
+      ageSeconds: null,
+      joinable: false,
+      reason: 'unknown',
+      hostHidden: false,
+      lastCheckedAt: new Date().toISOString(),
     },
     events: {
       passout: 0,
@@ -581,6 +599,31 @@ function collectStatus(req = null) {
   status.modRuntime = describeModRuntime(status.gameState, status.gameRunning);
   status.joinability = describeJoinable(status.gameState, status.gameRunning);
   status.health.joinable = status.joinability.joinable;
+  status.connection = {
+    joinIp: status.network.joinIp || '',
+    joinPort: status.network.joinPort || 24642,
+    online: status.players.online || 0,
+    max: status.players.max || 4,
+    source: status.players.source || 'unknown',
+    trusted: status.players.source === 'smapi-state-bridge',
+    refreshedAt: status.players.refreshedAt || null,
+    ageSeconds: status.gameState && typeof status.gameState.ageSeconds === 'number' ? status.gameState.ageSeconds : null,
+    joinable: status.joinability.joinable === true,
+    reason: status.joinability.reason || 'unknown',
+    hostHidden: status.modRuntime.hostHidden === true,
+    lastCheckedAt: status.timestamp,
+  };
+  const autoPauseBlockers = [];
+  if (!status.gameRunning) autoPauseBlockers.push('game_not_running');
+  if (!status.gameState.available || status.gameState.stale) autoPauseBlockers.push('state_bridge_not_fresh');
+  if (status.manualPause.enabled) autoPauseBlockers.push('manual_pause_enabled');
+  if (status.gameState && status.gameState.saving === true) autoPauseBlockers.push('saving');
+  if (status.gameState && status.gameState.eventUp === true) autoPauseBlockers.push('event_active');
+  if (status.joinability.reason === 'blocking_event') autoPauseBlockers.push('blocking_event');
+  status.autoPause.guard = {
+    safeToSwitch: autoPauseBlockers.length === 0,
+    blockers: autoPauseBlockers,
+  };
 
   if (!status.scriptsHealthy) {
     try {
@@ -871,6 +914,7 @@ function scheduleContainerRecreate(managerUrl) {
 }
 
 module.exports = {
+  collectStatus,
   getStatus,
   subscribeStatus,
   restartServer,

@@ -128,14 +128,30 @@ app.post('/api/game/auto-pause', auth.verifyMiddleware, statusAPI.setAutoPause);
 
 // Mods API
 const modsAPI = require('./api/mods');
+app.get('/api/public/mods', modsAPI.getPublicMods);
+app.get('/api/public/mods/manifest.json', modsAPI.getPublicMods);
+app.get('/api/public/mods/client-pack', modsAPI.downloadClientPack);
+app.get('/api/public/mods/download/:folder', modsAPI.downloadPublicMod);
 app.get('/api/mods', auth.verifyMiddleware, modsAPI.getMods);
 app.get('/api/mods/client-pack', auth.verifyMiddleware, modsAPI.downloadClientPack);
 app.get('/api/mods/download/:folder', auth.verifyMiddleware, modsAPI.downloadMod);
+app.get('/api/mods/backups', auth.verifyMiddleware, modsAPI.listModBackups);
+app.get('/api/mods/backups/download/:filename', auth.verifyMiddleware, modsAPI.downloadModBackup);
+app.post('/api/mods/rollback/:filename', auth.verifyMiddleware, modsAPI.rollbackModBackup);
 app.post('/api/mods/upload', auth.verifyMiddleware, modsAPI.uploadMod);
 app.delete('/api/mods/:folder', auth.verifyMiddleware, modsAPI.deleteMod);
 
+// Diagnostics API
+const diagnosticsAPI = require('./api/diagnostics');
+app.get('/api/health', auth.verifyMiddleware, diagnosticsAPI.getHealth);
+app.get('/api/reports/crash', auth.verifyMiddleware, diagnosticsAPI.exportCrashReport);
+
 // ─── Static Files ────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/player-mods', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'player-mods.html'));
+});
 
 // SPA fallback - serve index.html for all non-API routes
 app.get('*', (req, res) => {

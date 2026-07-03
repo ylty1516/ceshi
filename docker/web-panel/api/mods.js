@@ -5,6 +5,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const config = require('../server');
 const { AppError, commandError, sendError } = require('../errors');
@@ -17,6 +18,7 @@ const CLIENT_PACK_FILENAME = 'stardew-client-mods.zip';
 const CLIENT_PACK_DIR = path.join(config.DATA_DIR, 'client-packs');
 const CLIENT_PACK_PATH = path.join(CLIENT_PACK_DIR, CLIENT_PACK_FILENAME);
 const CLIENT_PACK_METADATA_PATH = path.join(CLIENT_PACK_DIR, 'stardew-client-mods.json');
+const MOD_BACKUPS_DIR = path.join(config.DATA_DIR, 'mod-backups');
 const CLIENT_REQUIRED_MOD_IDS = new Set([
   'ylty.SinglePlayerPauseReporter',
 ]);
@@ -73,6 +75,93 @@ function getTreeMtimeMs(targetPath) {
 
   visit(targetPath);
   return Math.round(maxMtime);
+}
+
+function assertSafeArchiveFilename(filename, extension = '.tar.gz') {
+  const safeName = path.basename(filename || '');
+  if (!safeName || safeName !== filename || !safeName.endsWith(extension)) {
+    throw new AppError('Invalid archive filename', {
+      status: 400,
+      code: 'INVALID_ARCHIVE_FILENAME',
+      cause: 'Archive filenames cannot contain path separators and must use the expected extension.',
+      action: 'Refresh the page and choose an archive from the list.',
+    });
+  }
+
+  return safeName;
+}
+
+function getDirectoryStats(targetPath) {
+  const result = {
+    size: 0,
+    fileCount: 0,
+    mtimeMs: 0,
+  };
+
+  const visit = (itemPath) => {
+    const stat = fs.statSync(itemPath);
+    result.mtimeMs = Math.max(result.mtimeMs, stat.mtimeMs);
+    if (stat.isDirectory()) {
+      for (const child of fs.readdirSync(itemPath).sort()) {
+        visit(path.join(itemPath, child));
+      }
+      return;
+    }
+
+    result.size += stat.size;
+    result.fileCount += 1;
+  };
+
+  if (fs.existsSync(targetPath)) {
+    visit(targetPath);
+  }
+
+  result.mtimeMs = Math.round(result.mtimeMs);
+  return result;
+}
+
+function hashFile(filePath) {
+  const hash = crypto.createHash('sha256');
+  const buffer = Buffer.alloc(1024 * 1024);
+  const fd = fs.openSync(filePath, 'r');
+
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead > 0) {
+        hash.update(buffer.subarray(0, bytesRead));
+      }
+    } while (bytesRead > 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return hash.digest('hex');
+}
+
+function hashDirectory(rootDir) {
+  const hash = crypto.createHash('sha256');
+  const root = path.resolve(rootDir);
+
+  function visit(itemPath) {
+    const stat = fs.statSync(itemPath);
+    const relativePath = path.relative(root, itemPath).replace(/\\/g, '/');
+    if (stat.isDirectory()) {
+      for (const child of fs.readdirSync(itemPath).sort()) {
+        visit(path.join(itemPath, child));
+      }
+      return;
+    }
+
+    hash.update(relativePath);
+    hash.update('\0');
+    hash.update(hashFile(itemPath));
+    hash.update('\0');
+  }
+
+  visit(root);
+  return hash.digest('hex');
 }
 
 function readManifest(modDir, fallbackName) {
@@ -138,6 +227,19 @@ function getClientCompatibility(manifest, folder, preinstalledFolders = new Set(
   return {
     clientRequired: !serverOnly,
     clientCompatibility: serverOnly ? 'server-only' : 'client-required',
+  };
+}
+
+function getInstalledModCompatibility(folder) {
+  const modDir = path.join(GAME_MODS_DIR, folder);
+  const manifest = readManifest(modDir, folder);
+  if (!manifest) {
+    return null;
+  }
+
+  return {
+    manifest,
+    ...getClientCompatibility(manifest, folder, getPreinstalledModFolders()),
   };
 }
 
@@ -241,7 +343,7 @@ function resolveChildPath(rootDir, childName) {
   return target;
 }
 
-function getModDownloadSource(folder) {
+function getModDownloadSource(folder, options = {}) {
   const safeFolder = path.basename(folder || '');
   if (!safeFolder) {
     throw new AppError('Mod folder name is required', {
@@ -253,7 +355,17 @@ function getModDownloadSource(folder) {
   }
 
   const preinstalledFolders = getPreinstalledModFolders();
-  if (preinstalledFolders.has(safeFolder)) {
+  const compatibility = getInstalledModCompatibility(safeFolder);
+  if (options.clientRequiredOnly && (!compatibility || compatibility.clientRequired !== true)) {
+    throw new AppError('Mod is not required by players', {
+      status: 403,
+      code: 'MOD_NOT_CLIENT_REQUIRED',
+      cause: 'The selected mod is server-only or not currently installed as a player-required mod.',
+      action: 'Use the full player mod pack or choose a client-required mod from the public download page.',
+    });
+  }
+
+  if (preinstalledFolders.has(safeFolder) && !(options.allowClientRequiredBuiltin && compatibility?.clientRequired === true)) {
     throw new AppError('Built-in mods cannot be downloaded individually', {
       status: 403,
       code: 'BUILT_IN_MOD_PROTECTED',
@@ -464,6 +576,68 @@ function downloadMod(req, res) {
   });
 }
 
+function downloadPublicMod(req, res) {
+  let source;
+  try {
+    source = getModDownloadSource(req.params.folder, {
+      allowClientRequiredBuiltin: true,
+      clientRequiredOnly: true,
+    });
+  } catch (error) {
+    return sendError(res, req, error, {
+      status: error.status || 500,
+      code: error.code || 'PUBLIC_MOD_DOWNLOAD_LOOKUP_FAILED',
+      message: 'Failed to find player mod download',
+      cause: error.cause || 'The panel could not find the selected player-required mod.',
+      details: error.details || error.message,
+      action: error.action || 'Refresh the player mod download page and try again.',
+    });
+  }
+
+  if (source.type === 'file') {
+    return res.download(source.path, source.filename, (error) => {
+      if (error && !res.headersSent) {
+        return sendError(res, req, error, {
+          status: 500,
+          code: 'PUBLIC_MOD_DOWNLOAD_FAILED',
+          message: 'Failed to download player mod',
+          cause: 'The mod archive exists, but the panel could not send it to the browser.',
+          details: error.message,
+          action: 'Retry the download and tell the server owner if it fails again.',
+        });
+      }
+    });
+  }
+
+  let tempArchive;
+  try {
+    tempArchive = createTemporaryModArchive(source);
+  } catch (error) {
+    return sendError(res, req, error, {
+      status: 500,
+      code: 'PUBLIC_MOD_ARCHIVE_CREATE_FAILED',
+      message: 'Failed to package player mod',
+      cause: error.cause || 'The selected mod exists as a folder, but the panel could not create a zip download.',
+      details: error.details || error.message,
+      action: error.action || 'Tell the server owner to rebuild the Docker image so the zip command is available.',
+    });
+  }
+
+  return res.download(tempArchive.zipPath, source.filename, (error) => {
+    fs.rmSync(tempArchive.tempDir, { recursive: true, force: true });
+    if (error && !res.headersSent) {
+      return sendError(res, req, error, {
+        status: 500,
+        code: 'PUBLIC_MOD_DOWNLOAD_FAILED',
+        message: 'Failed to download player mod',
+        cause: 'The temporary mod archive was created, but the panel could not send it to the browser.',
+        details: error.message,
+        action: 'Retry the download and tell the server owner if it fails again.',
+      });
+    }
+  });
+}
+
 function getClientPackEntries() {
   const packEntries = [];
   const preinstalledFolders = getPreinstalledModFolders();
@@ -504,6 +678,50 @@ function getClientPackEntries() {
   }
 
   return packEntries.sort((a, b) => a.folder.localeCompare(b.folder));
+}
+
+function getPublicModManifest(req = null) {
+  const entries = getClientPackEntries();
+  const mods = entries.map(entry => {
+    const modDir = path.join(GAME_MODS_DIR, entry.folder);
+    const stats = getDirectoryStats(modDir);
+    const hash = hashDirectory(modDir);
+
+    return {
+      ...entry,
+      size: stats.size,
+      fileCount: stats.fileCount,
+      updatedAt: stats.mtimeMs ? new Date(stats.mtimeMs).toISOString() : '',
+      sha256: hash,
+      downloadUrl: `/api/public/mods/download/${encodeURIComponent(entry.folder)}`,
+    };
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    clientPack: {
+      ...getClientPackStatus(),
+      downloadUrl: '/api/public/mods/client-pack',
+    },
+    manifestUrl: '/api/public/mods/manifest.json',
+    mods,
+    total: mods.length,
+  };
+}
+
+function getPublicMods(req, res) {
+  try {
+    res.json(getPublicModManifest(req));
+  } catch (error) {
+    return sendError(res, req, error, {
+      status: 500,
+      code: 'PUBLIC_MOD_MANIFEST_FAILED',
+      message: 'Failed to build player mod manifest',
+      cause: error.cause || 'The panel could not inspect the player-required mods.',
+      details: error.details || error.message,
+      action: error.action || 'Ask the server owner to check mod directory permissions and refresh the page.',
+    });
+  }
 }
 
 function getClientPackSnapshot(entries) {
@@ -719,6 +937,218 @@ function downloadClientPack(req, res) {
   });
 }
 
+function cleanupOldModBackups() {
+  const maxBackups = parseInt(process.env.MAX_MOD_BACKUPS || '10', 10);
+  if (!maxBackups || maxBackups < 1 || !fs.existsSync(MOD_BACKUPS_DIR)) {
+    return;
+  }
+
+  const backups = fs.readdirSync(MOD_BACKUPS_DIR)
+    .filter(file => file.endsWith('.tar.gz'))
+    .map(file => {
+      const fullPath = path.join(MOD_BACKUPS_DIR, file);
+      return {
+        file,
+        fullPath,
+        metaPath: `${fullPath}.json`,
+        mtimeMs: fs.statSync(fullPath).mtimeMs,
+      };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  backups.slice(maxBackups).forEach(item => {
+    try {
+      fs.rmSync(item.fullPath, { force: true });
+      fs.rmSync(item.metaPath, { force: true });
+    } catch (error) {}
+  });
+}
+
+function createModBackup(reason = 'manual') {
+  ensureDir(MOD_BACKUPS_DIR);
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const backupName = `mod-backup-${reason}-${timestamp}.tar.gz`.replace(/[^A-Za-z0-9_.-]/g, '-');
+  const backupPath = path.join(MOD_BACKUPS_DIR, backupName);
+  const metadataPath = `${backupPath}.json`;
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'puppy-mod-backup-'));
+
+  try {
+    const metadata = {
+      filename: backupName,
+      reason,
+      createdAt: new Date().toISOString(),
+      customModsExists: fs.existsSync(CUSTOM_MODS_DIR),
+      gameModsExists: fs.existsSync(GAME_MODS_DIR),
+      customModsDir: 'custom-mods',
+      gameModsDir: 'Mods',
+    };
+
+    if (metadata.customModsExists) {
+      fs.cpSync(CUSTOM_MODS_DIR, path.join(tempRoot, 'custom-mods'), { recursive: true });
+    }
+    if (metadata.gameModsExists) {
+      fs.cpSync(GAME_MODS_DIR, path.join(tempRoot, 'Mods'), { recursive: true });
+    }
+
+    fs.writeFileSync(path.join(tempRoot, 'mod-backup.json'), JSON.stringify(metadata, null, 2), 'utf-8');
+    runCommand('tar', ['-czf', backupPath, '-C', tempRoot, '.'], {
+      timeout: 180000,
+    });
+
+    const stat = fs.statSync(backupPath);
+    const result = {
+      ...metadata,
+      size: stat.size,
+    };
+    fs.writeFileSync(metadataPath, JSON.stringify(result, null, 2), 'utf-8');
+    cleanupOldModBackups();
+    return result;
+  } catch (error) {
+    fs.rmSync(backupPath, { force: true });
+    fs.rmSync(metadataPath, { force: true });
+    throw error;
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+function readModBackupMetadata(filename) {
+  const safeName = assertSafeArchiveFilename(filename);
+  const backupPath = path.join(MOD_BACKUPS_DIR, safeName);
+  const metadataPath = `${backupPath}.json`;
+  let metadata = {};
+
+  try {
+    if (fs.existsSync(metadataPath)) {
+      metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+    }
+  } catch (error) {
+    metadata = {};
+  }
+
+  const stat = fs.statSync(backupPath);
+  return {
+    filename: safeName,
+    reason: metadata.reason || '',
+    createdAt: metadata.createdAt || stat.mtime.toISOString(),
+    size: stat.size,
+  };
+}
+
+function listModBackups(req, res) {
+  try {
+    if (!fs.existsSync(MOD_BACKUPS_DIR)) {
+      return res.json({ backups: [] });
+    }
+
+    const backups = fs.readdirSync(MOD_BACKUPS_DIR)
+      .filter(file => file.endsWith('.tar.gz'))
+      .map(file => readModBackupMetadata(file))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({ backups });
+  } catch (error) {
+    return sendError(res, req, error, {
+      status: 500,
+      code: 'MOD_BACKUP_LIST_FAILED',
+      message: 'Failed to list mod backups',
+      cause: 'The panel could not read the mod backup directory.',
+      details: error.message,
+      action: 'Check web-panel data permissions and refresh the Mods page.',
+    });
+  }
+}
+
+function downloadModBackup(req, res) {
+  let filename;
+  try {
+    filename = assertSafeArchiveFilename(req.params.filename);
+  } catch (error) {
+    return sendError(res, req, error);
+  }
+
+  const backupPath = path.join(MOD_BACKUPS_DIR, filename);
+  if (!fs.existsSync(backupPath)) {
+    return sendError(res, req, new AppError('Mod backup not found', {
+      status: 404,
+      code: 'MOD_BACKUP_NOT_FOUND',
+      cause: 'The requested mod backup archive no longer exists.',
+      action: 'Refresh the Mods page and choose another backup.',
+    }));
+  }
+
+  res.download(backupPath, filename);
+}
+
+function rollbackModBackup(req, res) {
+  let filename;
+  try {
+    filename = assertSafeArchiveFilename(req.params.filename);
+  } catch (error) {
+    return sendError(res, req, error);
+  }
+
+  const backupPath = path.join(MOD_BACKUPS_DIR, filename);
+  if (!fs.existsSync(backupPath)) {
+    return sendError(res, req, new AppError('Mod backup not found', {
+      status: 404,
+      code: 'MOD_BACKUP_NOT_FOUND',
+      cause: 'The requested mod backup archive no longer exists.',
+      action: 'Refresh the Mods page and choose another backup.',
+    }));
+  }
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'puppy-mod-rollback-'));
+  try {
+    const safetyBackup = createModBackup('pre-rollback');
+    runCommand('tar', ['-xzf', backupPath, '-C', tempRoot], {
+      timeout: 180000,
+    });
+
+    const restoredCustomMods = path.join(tempRoot, 'custom-mods');
+    const restoredGameMods = path.join(tempRoot, 'Mods');
+
+    fs.rmSync(CUSTOM_MODS_DIR, { recursive: true, force: true });
+    fs.rmSync(GAME_MODS_DIR, { recursive: true, force: true });
+    ensureDir(path.dirname(CUSTOM_MODS_DIR));
+    ensureDir(path.dirname(GAME_MODS_DIR));
+
+    if (fs.existsSync(restoredCustomMods)) {
+      fs.cpSync(restoredCustomMods, CUSTOM_MODS_DIR, { recursive: true });
+    } else {
+      ensureDir(CUSTOM_MODS_DIR);
+    }
+
+    if (fs.existsSync(restoredGameMods)) {
+      fs.cpSync(restoredGameMods, GAME_MODS_DIR, { recursive: true });
+    } else {
+      ensureDir(GAME_MODS_DIR);
+    }
+
+    const clientPack = safeRebuildClientPack('rollback');
+    res.json({
+      success: true,
+      message: 'Mod backup restored',
+      restored: filename,
+      safetyBackup,
+      clientPack,
+      needsRestart: true,
+    });
+  } catch (error) {
+    return sendError(res, req, error, {
+      status: 500,
+      code: 'MOD_ROLLBACK_FAILED',
+      message: 'Failed to rollback mod backup',
+      cause: error.cause || 'The panel could not restore the selected mod backup.',
+      details: error.details || error.message,
+      action: error.action || 'Use the backup archive manually or choose the pre-rollback safety backup.',
+    });
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
 /**
  * POST /api/mods/upload
  * Upload a mod zip file to custom-mods directory
@@ -790,6 +1220,8 @@ function uploadMod(req, res) {
       }));
     }
 
+    const preChangeBackup = createModBackup('pre-upload');
+
     fs.writeFileSync(destPath, buffer);
 
     try {
@@ -816,6 +1248,7 @@ function uploadMod(req, res) {
         autoInstallFailed: false,
         needsRestart: true,
         installedFolders: installResult.installedFolders,
+        backup: preChangeBackup,
         clientPack,
       });
     } catch (e) {
@@ -832,6 +1265,7 @@ function uploadMod(req, res) {
         installError: e.cause || e.message,
         installDetails: e.details || '',
         needsRestart: true,
+        backup: preChangeBackup,
         clientPack,
       });
     }
@@ -905,12 +1339,13 @@ function deleteMod(req, res) {
   }
 
   try {
+    const preChangeBackup = createModBackup('pre-delete');
     for (const target of [...sourcePaths, ...gamePaths]) {
       fs.rmSync(target, { recursive: true, force: true });
     }
 
     const clientPack = safeRebuildClientPack('delete');
-    res.json({ success: true, message: 'Mod deleted successfully', needsRestart: true, clientPack });
+    res.json({ success: true, message: 'Mod deleted successfully', needsRestart: true, backup: preChangeBackup, clientPack });
   } catch (e) {
     return sendError(res, req, e, {
       status: 500,
@@ -923,4 +1358,16 @@ function deleteMod(req, res) {
   }
 }
 
-module.exports = { getMods, uploadMod, deleteMod, downloadClientPack, downloadMod };
+module.exports = {
+  getMods,
+  getPublicModManifest,
+  getPublicMods,
+  uploadMod,
+  deleteMod,
+  downloadClientPack,
+  downloadMod,
+  downloadPublicMod,
+  listModBackups,
+  downloadModBackup,
+  rollbackModBackup,
+};

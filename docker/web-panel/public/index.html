@@ -214,6 +214,10 @@
           <span class="nav-icon"><svg class="icon"><use href="#icon-logs"></use></svg></span>
           <span class="nav-label" data-i18n="nav.logs">Logs</span>
         </li>
+        <li class="nav-item" data-page="diagnostics">
+          <span class="nav-icon"><svg class="icon"><use href="#icon-alert-triangle"></use></svg></span>
+          <span class="nav-label" data-i18n="nav.diagnostics">Diagnostics</span>
+        </li>
         <li class="nav-item" data-page="terminal">
           <span class="nav-icon"><svg class="icon"><use href="#icon-terminal"></use></svg></span>
           <span class="nav-label" data-i18n="nav.terminal">Terminal</span>
@@ -251,6 +255,7 @@
     <nav id="mobile-nav">
       <button class="mob-nav-item active" type="button" data-page="dashboard"><svg class="icon"><use href="#icon-dashboard"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="logs"><svg class="icon"><use href="#icon-logs"></use></svg></button>
+      <button class="mob-nav-item" type="button" data-page="diagnostics"><svg class="icon"><use href="#icon-alert-triangle"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="terminal"><svg class="icon"><use href="#icon-terminal"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="players"><svg class="icon"><use href="#icon-players"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="saves"><svg class="icon"><use href="#icon-saves"></use></svg></button>
@@ -363,6 +368,11 @@
                 <div class="detail-note" id="detail-joinable-note">--</div>
               </div>
               <div class="detail-item">
+                <div class="detail-label" data-i18n="dash.connectionFreshness">Connection Freshness</div>
+                <div class="detail-value" id="detail-connection-freshness">--</div>
+                <div class="detail-note" id="detail-connection-freshness-note">--</div>
+              </div>
+              <div class="detail-item">
                 <div class="detail-label" data-i18n="dash.modRuntime">Mod Runtime</div>
                 <div class="detail-value" id="detail-mod-runtime">--</div>
                 <div class="detail-note" id="detail-mod-runtime-note">--</div>
@@ -459,6 +469,28 @@
           </div>
         </section>
 
+        <section id="page-diagnostics" class="page">
+          <div class="card">
+            <div class="section-header">
+              <h3 data-i18n="diag.title">Health Check</h3>
+              <div class="section-actions">
+                <button class="btn btn-primary btn-sm" type="button" onclick="loadDiagnostics()">
+                  <svg class="icon"><use href="#icon-refresh"></use></svg>
+                  <span data-i18n="diag.refresh">Refresh</span>
+                </button>
+                <button class="btn btn-success btn-sm" type="button" onclick="downloadCrashReport()">
+                  <svg class="icon"><use href="#icon-download"></use></svg>
+                  <span data-i18n="diag.exportReport">Export Report</span>
+                </button>
+              </div>
+            </div>
+            <div id="healthSummary" class="health-summary"></div>
+            <div id="healthChecks" class="health-list">
+              <div class="empty-state" data-i18n="players.loading">Loading...</div>
+            </div>
+          </div>
+        </section>
+
         <section id="page-terminal" class="page">
           <div class="card">
             <div class="terminal-toolbar">
@@ -545,6 +577,17 @@
           <div class="card">
             <h3 data-i18n="mods.title">Installed Mods</h3>
             <div id="modsList" class="mods-list">
+              <div class="empty-state" data-i18n="players.loading">Loading...</div>
+            </div>
+          </div>
+          <div class="card card-spaced">
+            <div class="section-header">
+              <h3 data-i18n="mods.backups">Mod Backups</h3>
+              <div class="section-actions">
+                <a class="btn btn-sm btn-muted" href="/player-mods" target="_blank" rel="noopener noreferrer" data-i18n="mods.publicPage">Player download page</a>
+              </div>
+            </div>
+            <div id="modBackupsList" class="saves-list">
               <div class="empty-state" data-i18n="players.loading">Loading...</div>
             </div>
           </div>

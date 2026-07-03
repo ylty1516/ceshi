@@ -63,13 +63,13 @@ function detectLanguage() {
 let currentLang = detectLanguage();
 const translations = {
   zh: {
-    'nav.dashboard': '仪表盘', 'nav.logs': '日志', 'nav.terminal': '终端',
+    'nav.dashboard': '仪表盘', 'nav.logs': '日志', 'nav.diagnostics': '诊断', 'nav.terminal': '终端',
     'nav.players': '玩家', 'nav.saves': '存档', 'nav.config': '配置', 'nav.mods': '模组',
     'dash.status': '服务器状态', 'dash.players': '在线玩家', 'dash.uptime': '运行时间',
     'dash.gameDay': '游戏日期', 'dash.backups': '备份数量', 'dash.mods': '已加载Mod',
     'dash.resources': '系统资源', 'dash.quickActions': '快捷操作',
     'dash.details': '服务器详情', 'dash.joinIp': '联机 IP', 'dash.joinPort': '联机端口',
-    'dash.joinable': '可加入状态', 'dash.modRuntime': 'Mod 生效状态', 'dash.autoPause': '自动暂停', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
+    'dash.joinable': '可加入状态', 'dash.connectionFreshness': '人数刷新', 'dash.modRuntime': 'Mod 生效状态', 'dash.autoPause': '自动暂停', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
     'dash.metricsPort': '监控端口', 'dash.events': '自动化事件',
     'dash.passout': '昏倒处理', 'dash.readyCheck': '准备检查', 'dash.offlineEvents': '离线恢复',
     'dash.joinHint': '游戏内通常只需要输入 IP 地址。', 'dash.portHint': '星露谷联机输入框里不要追加端口号。',
@@ -113,6 +113,21 @@ const translations = {
     'dash.pauseActive': '手动暂停已开启，游戏内时间会保持冻结。',
     'dash.autoPauseActive': '自动空服暂停已开启，无人在线超过延迟后会冻结游戏时间。',
     'dash.autoPauseInactive': '自动空服暂停已关闭，无人在线时游戏时间也会继续流动。',
+    'dash.connectionTrusted': '状态桥实时刷新',
+    'dash.connectionUntrusted': '没有可信实时人数',
+    'dash.connectionAge': '来源 {source}，更新于 {seconds} 秒前。',
+    'dash.connectionNoTime': '来源 {source}，尚无刷新时间。',
+    'diag.title': '服务器健康检查',
+    'diag.refresh': '刷新',
+    'diag.exportReport': '导出崩溃报告',
+    'diag.overall.ok': '整体正常',
+    'diag.overall.warn': '需要留意',
+    'diag.overall.error': '发现问题',
+    'diag.summary': '正常 {ok} · 警告 {warn} · 错误 {error}',
+    'diag.noChecks': '暂无检查结果',
+    'diag.status.ok': '正常',
+    'diag.status.warn': '警告',
+    'diag.status.error': '错误',
     'term.title': 'SMAPI 控制台（非系统终端）', 'term.hint': '点击“连接”后会附着到正在运行的 SMAPI 进程。这里只能输入 SMAPI 命令或 Steam Guard 验证码，不能执行 Linux 命令。',
     'term.connect': '连接', 'term.disconnect': '断开', 'term.send': '发送', 'term.input': '输入 SMAPI 命令或 Steam Guard 验证码...',
     'players.title': '在线玩家', 'players.loading': '加载中...',
@@ -150,12 +165,22 @@ const translations = {
     'mods.clientPackMissing': '玩家下载包会在上传 Mod 后自动生成。',
     'mods.clientPackRebuilt': '玩家下载包已自动更新。',
     'mods.clientPackBuildFail': '玩家下载包自动整理失败：{reason}',
+    'mods.backups': 'Mod 备份与回滚',
+    'mods.publicPage': '玩家下载页',
+    'mods.noBackups': '还没有 Mod 备份。上传或删除 Mod 前会自动创建。',
+    'mods.backupCreated': '已创建回滚备份：{name}',
+    'mods.rollback': '回滚',
+    'mods.confirmRollback': '确定要回滚到这个 Mod 备份吗？当前 Mod 状态会先自动保存一份安全备份。',
+    'mods.rollbackOk': 'Mod 已回滚。请重启服务器后生效。',
+    'mods.rollbackFail': 'Mod 回滚失败',
     'toast.modUploadOk': '模组上传成功！重启服务器后生效。', 'toast.modUploadFail': '模组上传失败',
     'toast.modDeleteOk': '模组已删除', 'toast.modDeleteFail': '模组删除失败',
     'toast.modDownloadOk': '模组下载已开始。',
     'toast.modDownloadFail': '模组下载失败',
     'toast.modClientPackOk': '玩家 Mod 包已开始下载。',
     'toast.modClientPackFail': '玩家 Mod 包下载失败',
+    'toast.reportOk': '崩溃报告已开始下载。',
+    'toast.reportFail': '崩溃报告导出失败',
     'config.group.Steam': 'Steam 设置', 'config.group.VNC': 'VNC 设置',
     'config.group.Display': '显示设置', 'config.group.Performance': '性能优化',
     'config.group.Backup': '备份设置', 'config.group.Stability': '稳定性',
@@ -205,13 +230,13 @@ const translations = {
     'theme.light': '切换到亮色模式', 'theme.dark': '切换到暗色模式',
   },
   en: {
-    'nav.dashboard': 'Dashboard', 'nav.logs': 'Logs', 'nav.terminal': 'Terminal',
+    'nav.dashboard': 'Dashboard', 'nav.logs': 'Logs', 'nav.diagnostics': 'Diagnostics', 'nav.terminal': 'Terminal',
     'nav.players': 'Players', 'nav.saves': 'Saves', 'nav.config': 'Config', 'nav.mods': 'Mods',
     'dash.status': 'Server Status', 'dash.players': 'Online Players', 'dash.uptime': 'Uptime',
     'dash.gameDay': 'Game Day', 'dash.backups': 'Backups', 'dash.mods': 'Loaded Mods',
     'dash.resources': 'System Resources', 'dash.quickActions': 'Quick Actions',
     'dash.details': 'Server Details', 'dash.joinIp': 'Join IP', 'dash.joinPort': 'Join Port',
-    'dash.joinable': 'Joinable', 'dash.modRuntime': 'Mod Runtime', 'dash.autoPause': 'Auto Pause', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
+    'dash.joinable': 'Joinable', 'dash.connectionFreshness': 'Player Refresh', 'dash.modRuntime': 'Mod Runtime', 'dash.autoPause': 'Auto Pause', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
     'dash.metricsPort': 'Metrics Port', 'dash.events': 'Automation Events',
     'dash.passout': 'Passout', 'dash.readyCheck': 'Ready Check', 'dash.offlineEvents': 'Offline Recovery',
     'dash.joinHint': 'In-game usually only needs the IP address.', 'dash.portHint': 'Do not append the port in Stardew\'s join field.',
@@ -255,6 +280,21 @@ const translations = {
     'dash.pauseActive': 'Manual pause is enabled. In-game time will stay frozen.',
     'dash.autoPauseActive': 'Automatic empty-server pause is enabled. Time freezes after the empty delay.',
     'dash.autoPauseInactive': 'Automatic empty-server pause is disabled. Time keeps moving when empty.',
+    'dash.connectionTrusted': 'Live state bridge',
+    'dash.connectionUntrusted': 'No trusted live count',
+    'dash.connectionAge': 'Source {source}, updated {seconds}s ago.',
+    'dash.connectionNoTime': 'Source {source}, no refresh time yet.',
+    'diag.title': 'Server Health Check',
+    'diag.refresh': 'Refresh',
+    'diag.exportReport': 'Export Report',
+    'diag.overall.ok': 'Healthy',
+    'diag.overall.warn': 'Needs attention',
+    'diag.overall.error': 'Problems found',
+    'diag.summary': 'OK {ok} · Warnings {warn} · Errors {error}',
+    'diag.noChecks': 'No check results yet',
+    'diag.status.ok': 'OK',
+    'diag.status.warn': 'Warn',
+    'diag.status.error': 'Error',
     'term.title': 'SMAPI Console (Not a System Shell)', 'term.hint': 'Click "Connect" to attach to the running SMAPI process. This accepts SMAPI commands and Steam Guard codes, not Linux shell commands.',
     'term.connect': 'Connect', 'term.disconnect': 'Disconnect', 'term.send': 'Send', 'term.input': 'Type a SMAPI command or Steam Guard code...',
     'players.title': 'Online Players', 'players.loading': 'Loading...',
@@ -292,12 +332,22 @@ const translations = {
     'mods.clientPackMissing': 'Client pack will be generated automatically after uploading mods.',
     'mods.clientPackRebuilt': 'Client mod pack was updated automatically.',
     'mods.clientPackBuildFail': 'Client mod pack rebuild failed: {reason}',
+    'mods.backups': 'Mod Backups and Rollback',
+    'mods.publicPage': 'Player download page',
+    'mods.noBackups': 'No mod backups yet. Uploads and deletes create one automatically.',
+    'mods.backupCreated': 'Rollback backup created: {name}',
+    'mods.rollback': 'Rollback',
+    'mods.confirmRollback': 'Rollback to this mod backup? The current mod state will be saved as a safety backup first.',
+    'mods.rollbackOk': 'Mods rolled back. Restart the server to apply.',
+    'mods.rollbackFail': 'Mod rollback failed',
     'toast.modUploadOk': 'Mod uploaded! Restart server to apply.', 'toast.modUploadFail': 'Mod upload failed',
     'toast.modDeleteOk': 'Mod deleted', 'toast.modDeleteFail': 'Mod delete failed',
     'toast.modDownloadOk': 'Mod download started.',
     'toast.modDownloadFail': 'Mod download failed',
     'toast.modClientPackOk': 'Client mod pack download started.',
     'toast.modClientPackFail': 'Client mod pack download failed',
+    'toast.reportOk': 'Crash report download started.',
+    'toast.reportFail': 'Crash report export failed',
     'config.group.Steam': 'Steam', 'config.group.VNC': 'VNC',
     'config.group.Display': 'Display', 'config.group.Performance': 'Performance',
     'config.group.Backup': 'Backup', 'config.group.Stability': 'Stability',
@@ -501,6 +551,9 @@ function reloadCurrentPage() {
         document.getElementById('logSearch')?.value || ''
       );
       break;
+    case 'diagnostics':
+      loadDiagnostics();
+      break;
     case 'players':
       loadPlayers();
       break;
@@ -563,7 +616,7 @@ function navigateTo(page) {
 
   // Update title
   const titleMap = {
-    dashboard: t('nav.dashboard'), logs: t('nav.logs'), terminal: t('nav.terminal'),
+    dashboard: t('nav.dashboard'), logs: t('nav.logs'), diagnostics: t('nav.diagnostics'), terminal: t('nav.terminal'),
     players: t('nav.players'), saves: t('nav.saves'), config: t('nav.config'), mods: t('nav.mods'),
   };
   document.getElementById('pageTitle').textContent = titleMap[page] || page;
@@ -575,6 +628,7 @@ function navigateTo(page) {
   switch (page) {
     case 'dashboard': loadDashboard(); break;
     case 'logs': loadLogs('all'); subscribeToLogs('all'); break;
+    case 'diagnostics': loadDiagnostics(); break;
     case 'players': startPlayersAutoRefresh(); break;
     case 'saves': loadSaves(); break;
     case 'config': loadConfig(); break;
@@ -716,6 +770,7 @@ function updateDashboardUI(data) {
   setText('detail-join-ip', network.joinIp || '--');
   setText('detail-join-port', `${network.joinPort || 24642}/UDP`);
   updateJoinabilityUI(data.joinability || { joinable: false, reason: 'unknown' });
+  updateConnectionFreshnessUI(data.connection || {});
   updateModRuntimeUI(data.modRuntime || { active: false, state: 'unknown' });
   updateAutoPauseUI(data.autoPause || { enabled: false, state: 'unknown' });
   setText('detail-local-ips', network.localIps && network.localIps.length ? network.localIps.join(', ') : '--');
@@ -742,6 +797,29 @@ function updateJoinabilityUI(joinability) {
 
   if (note) {
     note.textContent = reasonText;
+  }
+}
+
+function updateConnectionFreshnessUI(connection) {
+  const value = document.getElementById('detail-connection-freshness');
+  const note = document.getElementById('detail-connection-freshness-note');
+  const trusted = connection && connection.trusted === true;
+  const source = connection?.source || 'unknown';
+
+  if (value) {
+    value.textContent = trusted ? t('dash.connectionTrusted') : t('dash.connectionUntrusted');
+    setTone(value, trusted ? 'ok' : 'warn');
+  }
+
+  if (note) {
+    if (typeof connection?.ageSeconds === 'number') {
+      note.textContent = tf('dash.connectionAge', {
+        source,
+        seconds: String(connection.ageSeconds),
+      });
+    } else {
+      note.textContent = tf('dash.connectionNoTime', { source });
+    }
   }
 }
 
@@ -1005,6 +1083,61 @@ function renderDiagnosticIssue(issue) {
 }
 
 // ─── Terminal ────────────────────────────────────────────────────
+// Diagnostics
+async function loadDiagnostics() {
+  const data = await API.get('/api/health');
+  const summary = document.getElementById('healthSummary');
+  const list = document.getElementById('healthChecks');
+  if (!data || !summary || !list) return;
+
+  if (data.error) {
+    summary.innerHTML = '';
+    list.innerHTML = '<div class="empty-state">' + escapeHtml(formatApiError(data, 'Health check failed')) + '</div>';
+    return;
+  }
+
+  const overall = data.overall || 'warn';
+  const counts = data.summary || {};
+  summary.className = 'health-summary ' + overall;
+  summary.innerHTML =
+    '<div class="health-summary-title">' + escapeHtml(t('diag.overall.' + overall)) + '</div>' +
+    '<div class="health-summary-meta">' + escapeHtml(tf('diag.summary', {
+      ok: String(counts.ok || 0),
+      warn: String(counts.warn || 0),
+      error: String(counts.error || 0),
+    })) + '</div>';
+
+  const checks = data.checks || [];
+  if (checks.length === 0) {
+    list.innerHTML = '<div class="empty-state">' + escapeHtml(t('diag.noChecks')) + '</div>';
+    return;
+  }
+
+  list.innerHTML = checks.map(check => {
+    const status = check.status || 'warn';
+    return '<div class="health-item ' + escapeHtml(status) + '">' +
+      '<div class="health-item-main">' +
+        '<div class="health-title">' +
+          '<span>' + escapeHtml(check.label || check.id || '') + '</span>' +
+          '<span class="health-badge">' + escapeHtml(t('diag.status.' + status)) + '</span>' +
+        '</div>' +
+        '<div class="health-detail">' + escapeHtml(check.detail || '') + '</div>' +
+        (check.action ? '<div class="health-action">' + escapeHtml(check.action) + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function downloadCrashReport() {
+  const data = await API.download('/api/reports/crash');
+  if (data && data.success) {
+    showToast(t('toast.reportOk'), 'success');
+    return;
+  }
+
+  showToast(formatApiError(data, t('toast.reportFail')), 'error', 7000);
+}
+
 function terminalConnect() {
   wsSend({ type: 'terminal:open' });
 }
@@ -1042,17 +1175,24 @@ async function loadPlayers() {
   if (!data) return;
 
   const list = document.getElementById('playersList');
+  const refreshNote = data.trusted
+    ? tf('dash.connectionAge', {
+        source: data.source || 'unknown',
+        seconds: typeof data.ageSeconds === 'number' ? String(data.ageSeconds) : '--',
+      })
+    : tf('dash.connectionNoTime', { source: data.source || 'unknown' });
 
   if (!data.players || data.players.length === 0) {
     list.innerHTML = `<div class="empty-state">
       ${icon('players', 'icon empty-icon')}
       <div>${t('players.none')}</div>
       <div class="players-online-note">${tf('players.online', { online: data.online, max: data.max })}</div>
+      <div class="players-online-note">${escapeHtml(refreshNote)}</div>
     </div>`;
     return;
   }
 
-  list.innerHTML = data.players.map(p => `
+  list.innerHTML = '<div class="players-online-note">' + escapeHtml(refreshNote) + '</div>' + data.players.map(p => `
     <div class="player-card">
       <div class="player-avatar">${icon('player', 'icon')}</div>
       <div>
@@ -1542,8 +1682,12 @@ function startContainerReconnectPolling() {
 
 // ─── Mods ────────────────────────────────────────────────────────
 async function loadMods() {
-  const data = await API.get('/api/mods');
+  const [data, backupsData] = await Promise.all([
+    API.get('/api/mods'),
+    API.get('/api/mods/backups'),
+  ]);
   if (!data) return;
+  renderModBackups(backupsData);
 
   const list = document.getElementById('modsList');
 
@@ -1611,6 +1755,41 @@ async function loadMods() {
   });
 }
 
+function renderModBackups(data) {
+  const list = document.getElementById('modBackupsList');
+  if (!list) return;
+
+  if (!data || !data.backups || data.backups.length === 0) {
+    list.innerHTML = '<div class="empty-state">' + escapeHtml(t('mods.noBackups')) + '</div>';
+    return;
+  }
+
+  list.innerHTML = data.backups.map(backup => `
+    <div class="backup-item">
+      <div class="save-info">
+        <div class="save-name">${icon('package', 'icon save-name-icon')}<span>${escapeHtml(backup.filename)}</span></div>
+        <div class="save-meta">${formatSize(backup.size)} · ${backup.createdAt ? new Date(backup.createdAt).toLocaleString(currentLang === 'zh' ? 'zh-CN' : 'en-US') : '--'} · ${escapeHtml(backup.reason || '')}</div>
+      </div>
+      <div class="save-actions">
+        <button class="btn btn-sm btn-primary mod-backup-download-btn" type="button" data-filename="${escapeHtml(backup.filename)}">${icon('download', 'icon')}<span>${t('mods.download')}</span></button>
+        <button class="btn btn-sm btn-warning mod-rollback-btn" type="button" data-filename="${escapeHtml(backup.filename)}">${icon('refresh', 'icon')}<span>${t('mods.rollback')}</span></button>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.mod-backup-download-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      downloadModBackup(btn.dataset.filename);
+    });
+  });
+
+  list.querySelectorAll('.mod-rollback-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      rollbackModBackup(btn.dataset.filename);
+    });
+  });
+}
+
 async function handleModUpload(input) {
   if (!input.files || !input.files[0]) return;
   var file = input.files[0];
@@ -1670,6 +1849,30 @@ async function downloadMod(folder, name) {
   showToast(formatApiError(data, t('toast.modDownloadFail')), 'error', 7000);
 }
 
+async function downloadModBackup(filename) {
+  const data = await API.download('/api/mods/backups/download/' + encodeURIComponent(filename), filename);
+  if (data && data.success) {
+    showToast(t('toast.modDownloadOk'), 'success');
+    return;
+  }
+
+  showToast(formatApiError(data, t('toast.modDownloadFail')), 'error', 7000);
+}
+
+async function rollbackModBackup(filename) {
+  if (!confirm(t('mods.confirmRollback'))) return;
+
+  const data = await API.post('/api/mods/rollback/' + encodeURIComponent(filename), {});
+  if (data && data.success) {
+    showToast(t('mods.rollbackOk'), 'success', 7000);
+    loadMods();
+    loadDashboard();
+    return;
+  }
+
+  showToast(formatApiError(data, t('mods.rollbackFail')), 'error', 8000);
+}
+
 async function downloadClientModPack() {
   const data = await API.download('/api/mods/client-pack', 'stardew-client-mods.zip');
 
@@ -1688,7 +1891,7 @@ async function downloadClientModPack() {
 
 function getModUploadToast(data) {
   if (data && data.success) {
-    var clientPackText = getClientPackResultText(data.clientPack);
+    var clientPackText = appendSentence(getModBackupResultText(data.backup), getClientPackResultText(data.clientPack));
     if (data.hasManifest) {
       return appendSentence(t('mods.uploadInstalled'), clientPackText);
     }
@@ -1708,7 +1911,7 @@ function getModUploadToast(data) {
 }
 
 function getModDeleteToast(data) {
-  var clientPackText = getClientPackResultText(data?.clientPack);
+  var clientPackText = appendSentence(getModBackupResultText(data?.backup), getClientPackResultText(data?.clientPack));
   if (data && data.success && data.needsRestart) {
     return appendSentence(t('mods.deleteNeedsRestart'), clientPackText);
   }
@@ -1745,7 +1948,13 @@ function getClientPackResultText(clientPack) {
   return '';
 }
 
+function getModBackupResultText(backup) {
+  if (!backup || !backup.filename) return '';
+  return tf('mods.backupCreated', { name: backup.filename });
+}
+
 function appendSentence(base, extra) {
+  if (!base) return extra || '';
   return extra ? `${base} ${extra}` : base;
 }
 

@@ -129,7 +129,9 @@ function getPlayers(req, res) {
       max: 4,
       players: statePlayers,
       source: 'smapi-state-bridge',
+      trusted: true,
       refreshedAt: gameState.updatedAt || null,
+      ageSeconds: typeof gameState.ageSeconds === 'number' ? gameState.ageSeconds : null,
       history: playerHistory,
     });
   }
@@ -141,6 +143,9 @@ function getPlayers(req, res) {
     max: 4,
     players: [],
     source: 'untrusted',
+    trusted: false,
+    refreshedAt: null,
+    ageSeconds: null,
     history: playerHistory,
   });
 }
