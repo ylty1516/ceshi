@@ -14,6 +14,44 @@ const MAX_PLAYER_HISTORY = 288; // 24h at 5-min intervals
 let connectedPlayers = [];
 let lastLogParse = 0;
 
+function readFreshGameState(maxAgeSeconds = 20) {
+  if (!config.GAME_STATE_FILE || !fs.existsSync(config.GAME_STATE_FILE)) {
+    return null;
+  }
+
+  try {
+    const data = JSON.parse(fs.readFileSync(config.GAME_STATE_FILE, 'utf-8'));
+    const updatedAtMs = Date.parse(data.updatedAt || '');
+    if (!Number.isFinite(updatedAtMs)) {
+      return null;
+    }
+
+    const ageSeconds = Math.max(0, Math.floor((Date.now() - updatedAtMs) / 1000));
+    if (ageSeconds > maxAgeSeconds) {
+      return null;
+    }
+
+    return { ...data, ageSeconds };
+  } catch (error) {
+    return null;
+  }
+}
+
+function getPlayersFromGameState(gameState) {
+  if (!gameState || !Array.isArray(gameState.onlinePlayers)) {
+    return null;
+  }
+
+  return gameState.onlinePlayers
+    .filter(player => player && player.isHost !== true)
+    .map(player => ({
+      id: player.id || player.name || 'unknown',
+      name: player.name || normalizePlayerLabel(player.id || ''),
+      location: player.location || '',
+      inBed: player.inBed === true,
+    }));
+}
+
 function normalizePlayerLabel(value) {
   if (!value) {
     return 'Player';
@@ -82,17 +120,13 @@ function parsePlayersFromLogs() {
 }
 
 function getOnlineCount() {
-  try {
-    if (fs.existsSync(config.STATUS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(config.STATUS_FILE, 'utf-8'));
-      // Support nested structure
-      if (data.game && data.game.players_online !== undefined) {
-        return data.game.players_online || 0;
-      }
-      return data.players_online || 0;
-    }
-  } catch (e) {}
-  return connectedPlayers.length;
+  const gameState = readFreshGameState();
+  const players = getPlayersFromGameState(gameState);
+  if (players) {
+    return players.length;
+  }
+
+  return 0;
 }
 
 // Record player count history every 5 minutes
@@ -110,13 +144,26 @@ setInterval(() => {
 // ─── Route Handler ───────────────────────────────────────────────
 
 function getPlayers(req, res) {
-  const players = parsePlayersFromLogs();
-  const online = getOnlineCount();
+  const gameState = readFreshGameState();
+  const statePlayers = getPlayersFromGameState(gameState);
+  if (statePlayers) {
+    return res.json({
+      online: statePlayers.length,
+      max: 4,
+      players: statePlayers,
+      source: 'smapi-state-bridge',
+      refreshedAt: gameState.updatedAt || null,
+      history: playerHistory,
+    });
+  }
+
+  parsePlayersFromLogs();
 
   res.json({
-    online: Math.max(online, players.length),
+    online: 0,
     max: 4,
-    players,
+    players: [],
+    source: 'untrusted',
     history: playerHistory,
   });
 }

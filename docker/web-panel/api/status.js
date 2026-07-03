@@ -294,6 +294,50 @@ function describeJoinable(gameState, gameRunning) {
   };
 }
 
+function describeModRuntime(gameState, gameRunning) {
+  if (!gameRunning) {
+    return {
+      active: false,
+      state: 'stopped',
+      ageSeconds: null,
+      updatedAt: null,
+      lastAutomation: null,
+      hostHidden: false,
+    };
+  }
+
+  if (!gameState || !gameState.available) {
+    return {
+      active: false,
+      state: 'missing',
+      ageSeconds: null,
+      updatedAt: null,
+      lastAutomation: null,
+      hostHidden: false,
+    };
+  }
+
+  if (gameState.stale) {
+    return {
+      active: false,
+      state: 'stale',
+      ageSeconds: gameState.ageSeconds,
+      updatedAt: gameState.updatedAt || null,
+      lastAutomation: gameState.lastAutomation || null,
+      hostHidden: gameState.hostHidden === true,
+    };
+  }
+
+  return {
+    active: true,
+    state: 'active',
+    ageSeconds: gameState.ageSeconds,
+    updatedAt: gameState.updatedAt || null,
+    lastAutomation: gameState.lastAutomation || null,
+    hostHidden: gameState.hostHidden === true,
+  };
+}
+
 function collectStatus(req = null) {
   const now = Date.now();
   if (cachedStatus && now - cacheTime < CACHE_TTL) {
@@ -306,7 +350,7 @@ function collectStatus(req = null) {
     timestamp: new Date().toISOString(),
     gameRunning: false,
     uptime: 0,
-    players: { online: 0, max: 4 },
+    players: { online: 0, max: 4, list: [], source: 'unknown' },
     cpu: 0,
     memory: { used: 0, limit: 2048 },
     day: 'Unknown',
@@ -323,6 +367,14 @@ function collectStatus(req = null) {
       reason: 'unknown',
       label: 'Unknown',
       action: '',
+    },
+    modRuntime: {
+      active: false,
+      state: 'unknown',
+      ageSeconds: null,
+      updatedAt: null,
+      lastAutomation: null,
+      hostHidden: false,
     },
     health: {
       containerRunning: true,
@@ -351,7 +403,6 @@ function collectStatus(req = null) {
         status.uptime = data.server.uptime_seconds || 0;
       }
       if (data.game) {
-        status.players.online = data.game.players_online || 0;
         if (data.game.day) status.day = data.game.day;
         if (typeof data.game.paused === 'boolean') status.paused = data.game.paused;
       }
@@ -371,7 +422,6 @@ function collectStatus(req = null) {
       if (!data.server && !data.game && !data.resources) {
         status.gameRunning = data.server_status === 'running' || data.game_running === 1;
         status.uptime = data.uptime_seconds || 0;
-        status.players.online = data.players_online || 0;
         status.cpu = data.cpu_usage_percent || 0;
         status.memory.used = data.memory_usage_mb || 0;
         if (data.game_day) status.day = data.game_day;
@@ -422,9 +472,6 @@ function collectStatus(req = null) {
   if ((status.day === 'Unknown' || !status.day) && hints.day) {
     status.day = hints.day;
   }
-  if (status.players.online === 0 && hints.players > 0) {
-    status.players.online = hints.players;
-  }
   if (hints.paused) {
     status.paused = true;
   }
@@ -442,15 +489,20 @@ function collectStatus(req = null) {
     status.health.saveLoaded = gameState.worldReady === true;
     status.health.multiplayerReady = gameState.multiplayerReady === true;
     status.health.joinable = gameState.joinable === true;
-    status.players.online = Array.isArray(gameState.onlinePlayers)
-      ? gameState.onlinePlayers.filter(player => player && player.isHost !== true).length
-      : status.players.online;
+    const onlinePlayers = Array.isArray(gameState.onlinePlayers) ? gameState.onlinePlayers : [];
+    status.players.online = onlinePlayers.filter(player => player && player.isHost !== true).length;
     status.players.list = Array.isArray(gameState.onlinePlayers) ? gameState.onlinePlayers : [];
+    status.players.source = 'smapi-state-bridge';
+    status.players.refreshedAt = gameState.updatedAt || null;
     status.day = formatGameDay(gameState) || status.day;
     status.season = gameState.season || status.season;
     if (typeof gameState.paused === 'boolean') {
       status.paused = gameState.paused;
     }
+  } else {
+    status.players.online = 0;
+    status.players.list = [];
+    status.players.source = status.gameState.available ? 'stale-smapi-state-bridge' : 'untrusted';
   }
 
   if (status.manualPause.enabled) {
@@ -458,6 +510,7 @@ function collectStatus(req = null) {
   }
 
   status.health.gameProcessRunning = status.gameRunning === true;
+  status.modRuntime = describeModRuntime(status.gameState, status.gameRunning);
   status.joinability = describeJoinable(status.gameState, status.gameRunning);
   status.health.joinable = status.joinability.joinable;
 
@@ -523,7 +576,7 @@ setInterval(() => {
       statusSubscribers.delete(ws);
     }
   }
-}, 5000);
+}, 20000);
 
 // ─── Route Handlers ──────────────────────────────────────────────
 

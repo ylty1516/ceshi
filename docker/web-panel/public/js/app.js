@@ -26,6 +26,7 @@ let ws = null;
 let currentPage = 'dashboard';
 let logAutoScroll = true;
 let statusInterval = null;
+let playersInterval = null;
 let lastStatusData = null;
 let backupStatusPoll = null;
 let lastBackupStatus = null;
@@ -63,7 +64,7 @@ const translations = {
     'dash.gameDay': '游戏日期', 'dash.backups': '备份数量', 'dash.mods': '已加载Mod',
     'dash.resources': '系统资源', 'dash.quickActions': '快捷操作',
     'dash.details': '服务器详情', 'dash.joinIp': '联机 IP', 'dash.joinPort': '联机端口',
-    'dash.joinable': '可加入状态', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
+    'dash.joinable': '可加入状态', 'dash.modRuntime': 'Mod 生效状态', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
     'dash.metricsPort': '监控端口', 'dash.events': '自动化事件',
     'dash.passout': '昏倒处理', 'dash.readyCheck': '准备检查', 'dash.offlineEvents': '离线恢复',
     'dash.joinHint': '游戏内通常只需要输入 IP 地址。', 'dash.portHint': '星露谷联机输入框里不要追加端口号。',
@@ -81,6 +82,15 @@ const translations = {
     'join.reason.blocking_event': '房主处于阻塞事件中，可能需要推进或跳过事件。',
     'join.reason.menu_open': '房主有菜单打开，自动化会尝试处理；若持续存在请用 VNC 查看。',
     'join.reason.unknown': '可加入状态未知，请查看 SMAPI 日志。',
+    'mod.state.active': '已生效', 'mod.state.stale': '已过期', 'mod.state.missing': '未检测到',
+    'mod.state.stopped': '游戏未运行', 'mod.state.unknown': '未知',
+    'mod.reason.active': 'AutoHideHost 正在实时写入状态桥。',
+    'mod.reason.stale': '状态桥已经超过刷新窗口，Mod 可能卡住或游戏冻结。',
+    'mod.reason.missing': '还没有检测到 AutoHideHost 状态桥，请确认 Mod 已加载。',
+    'mod.reason.stopped': '游戏进程未运行，SMAPI Mod 不会生效。',
+    'mod.reason.unknown': '无法确认 Mod 状态。',
+    'mod.age': '更新于 {seconds} 秒前', 'mod.lastAutomation': '最近自动化 {type}（{result}）',
+    'mod.success': '成功', 'mod.failed': '失败', 'mod.hostHidden': '房主已隐藏',
     'dash.viewLogs': '查看日志', 'dash.restart': '重启服务器', 'dash.backup': '立即备份',
     'dash.pauseTime': '暂停时间', 'dash.resumeTime': '恢复时间',
     'dash.pauseHint': '手动暂停会冻结游戏内时间，所有在线玩家都会停在当前时间，直到你恢复。',
@@ -166,7 +176,7 @@ const translations = {
     'dash.gameDay': 'Game Day', 'dash.backups': 'Backups', 'dash.mods': 'Loaded Mods',
     'dash.resources': 'System Resources', 'dash.quickActions': 'Quick Actions',
     'dash.details': 'Server Details', 'dash.joinIp': 'Join IP', 'dash.joinPort': 'Join Port',
-    'dash.joinable': 'Joinable', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
+    'dash.joinable': 'Joinable', 'dash.modRuntime': 'Mod Runtime', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
     'dash.metricsPort': 'Metrics Port', 'dash.events': 'Automation Events',
     'dash.passout': 'Passout', 'dash.readyCheck': 'Ready Check', 'dash.offlineEvents': 'Offline Recovery',
     'dash.joinHint': 'In-game usually only needs the IP address.', 'dash.portHint': 'Do not append the port in Stardew\'s join field.',
@@ -184,6 +194,15 @@ const translations = {
     'join.reason.blocking_event': 'The host is blocked by an event. Advance or skip it if players cannot move.',
     'join.reason.menu_open': 'The host has an open menu. Automation may handle it; use VNC if it persists.',
     'join.reason.unknown': 'Joinable state is unknown. Check SMAPI logs.',
+    'mod.state.active': 'Active', 'mod.state.stale': 'Stale', 'mod.state.missing': 'Missing',
+    'mod.state.stopped': 'Game stopped', 'mod.state.unknown': 'Unknown',
+    'mod.reason.active': 'AutoHideHost is writing the state bridge in real time.',
+    'mod.reason.stale': 'The state bridge is outside the refresh window. The mod may be stuck or the game may be frozen.',
+    'mod.reason.missing': 'No AutoHideHost state bridge has been detected yet. Check whether the mod loaded.',
+    'mod.reason.stopped': 'The game process is stopped, so SMAPI mods are not active.',
+    'mod.reason.unknown': 'The mod runtime state cannot be confirmed.',
+    'mod.age': 'updated {seconds}s ago', 'mod.lastAutomation': 'last automation {type} ({result})',
+    'mod.success': 'success', 'mod.failed': 'failed', 'mod.hostHidden': 'host hidden',
     'dash.viewLogs': 'View Logs', 'dash.restart': 'Restart Server', 'dash.backup': 'Backup Now',
     'dash.pauseTime': 'Pause Time', 'dash.resumeTime': 'Resume Time',
     'dash.pauseHint': 'Manual pause freezes in-game time for all connected players until you resume it.',
@@ -392,7 +411,7 @@ function init() {
   };
 
   // Auto-refresh dashboard
-  statusInterval = setInterval(loadDashboard, 10000);
+  statusInterval = setInterval(loadDashboard, 20000);
 }
 
 function reloadCurrentPage() {
@@ -427,6 +446,23 @@ function reloadCurrentPage() {
   }
 }
 
+function startPlayersAutoRefresh() {
+  stopPlayersAutoRefresh();
+  loadPlayers();
+  playersInterval = setInterval(() => {
+    if (currentPage === 'players') {
+      loadPlayers();
+    }
+  }, 20000);
+}
+
+function stopPlayersAutoRefresh() {
+  if (playersInterval) {
+    clearInterval(playersInterval);
+    playersInterval = null;
+  }
+}
+
 // ─── Navigation ──────────────────────────────────────────────────
 function setupNavigation() {
   // Sidebar nav
@@ -441,6 +477,7 @@ function setupNavigation() {
 
 function navigateTo(page) {
   currentPage = page;
+  stopPlayersAutoRefresh();
 
   // Update sidebar active
   document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -466,7 +503,7 @@ function navigateTo(page) {
   switch (page) {
     case 'dashboard': loadDashboard(); break;
     case 'logs': loadLogs('all'); subscribeToLogs('all'); break;
-    case 'players': loadPlayers(); break;
+    case 'players': startPlayersAutoRefresh(); break;
     case 'saves': loadSaves(); break;
     case 'config': loadConfig(); break;
     case 'mods': loadMods(); break;
@@ -607,6 +644,7 @@ function updateDashboardUI(data) {
   setText('detail-join-ip', network.joinIp || '--');
   setText('detail-join-port', `${network.joinPort || 24642}/UDP`);
   updateJoinabilityUI(data.joinability || { joinable: false, reason: 'unknown' });
+  updateModRuntimeUI(data.modRuntime || { active: false, state: 'unknown' });
   setText('detail-local-ips', network.localIps && network.localIps.length ? network.localIps.join(', ') : '--');
   setText('detail-version', data.version || '--');
   setText('detail-script-health', data.scriptsHealthy ? t('dash.healthy') : t('dash.unhealthy'));
@@ -632,6 +670,37 @@ function updateJoinabilityUI(joinability) {
 
   if (note) {
     note.textContent = reasonText;
+  }
+}
+
+function updateModRuntimeUI(modRuntime) {
+  const value = document.getElementById('detail-mod-runtime');
+  const note = document.getElementById('detail-mod-runtime-note');
+  const state = modRuntime?.state || 'unknown';
+  const active = modRuntime && modRuntime.active === true;
+
+  if (value) {
+    value.textContent = t(`mod.state.${state}`);
+    value.classList.toggle('ok', active);
+    value.classList.toggle('warn', !active && state !== 'stopped');
+    value.classList.toggle('error', state === 'stopped');
+  }
+
+  if (note) {
+    const parts = [t(`mod.reason.${state}`)];
+    if (typeof modRuntime?.ageSeconds === 'number') {
+      parts.push(tf('mod.age', { seconds: modRuntime.ageSeconds }));
+    }
+    if (modRuntime?.lastAutomation?.type) {
+      parts.push(tf('mod.lastAutomation', {
+        type: modRuntime.lastAutomation.type,
+        result: modRuntime.lastAutomation.success ? t('mod.success') : t('mod.failed'),
+      }));
+    }
+    if (modRuntime?.hostHidden) {
+      parts.push(t('mod.hostHidden'));
+    }
+    note.textContent = parts.filter(Boolean).join(' | ');
   }
 }
 
