@@ -21,7 +21,7 @@ LABEL maintainer="truemanlive" \
 RUN dpkg --add-architecture i386 && \
     apt-get update && apt-get install -y --no-install-recommends \
     # Core tools
-    wget curl unzip ca-certificates gnupg \
+    wget curl unzip zip ca-certificates gnupg \
     # SteamCMD dependencies
     lib32gcc-s1 libcurl3-gnutls:i386 \
     # Game rendering

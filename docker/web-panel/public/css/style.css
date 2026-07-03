@@ -53,6 +53,7 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: hidden;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
@@ -98,6 +99,7 @@ textarea {
 #app {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 #sidebar {
@@ -120,6 +122,7 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ─── Sidebar ─────────────────────────────────────────────────── */
@@ -447,6 +450,7 @@ textarea {
 .btn > span {
   min-width: 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .btn-primary   { background: var(--accent-info); color: #fff; }
@@ -1124,9 +1128,26 @@ textarea {
   margin-bottom: 16px;
   padding: 16px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.mod-upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.mod-upload-copy {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .mod-upload-hint,
@@ -1142,13 +1163,23 @@ textarea {
   background: transparent;
 }
 .mod-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
   background: rgba(74,222,128,0.15);
   color: var(--accent);
+  line-height: 1.25;
+  min-height: 22px;
+  text-align: center;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .mod-badge.custom { background: rgba(56,189,248,0.15); color: var(--accent-info); }
+.mod-badge.client-required { background: rgba(251,191,36,0.16); color: var(--accent-warn); }
+.mod-badge.server-only { background: rgba(148,163,184,0.14); color: var(--text-secondary); }
 
 /* ─── Toast ───────────────────────────────────────────────────── */
 
@@ -1217,9 +1248,13 @@ textarea {
   right: 0;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
-  padding: 6px 0;
+  padding: 6px max(8px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
   z-index: 100;
-  justify-content: space-around;
+  justify-content: flex-start;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .mob-nav-item {
@@ -1234,6 +1269,9 @@ textarea {
   border-radius: 8px;
   opacity: 0.5;
   transition: all 0.15s;
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .mob-nav-item .icon { width: 22px; height: 22px; }
@@ -1285,10 +1323,13 @@ textarea {
   #sidebar { transform: translateX(-100%); }
   #sidebar.open { transform: translateX(0); }
 
-  #content { margin-left: 0; padding-bottom: 70px; }
+  #content {
+    margin-left: 0;
+    padding-bottom: calc(82px + env(safe-area-inset-bottom));
+  }
 
   #mobile-nav { display: flex; }
-  .mobile-only { display: block; }
+  .mobile-only { display: inline-flex; }
 
   .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .detail-item-wide { grid-column: auto; }
@@ -1310,6 +1351,14 @@ textarea {
   .password-wrapper { width: 100%; }
   .terminal-input-row { flex-direction: column; }
   .terminal-input-row .btn { width: 100%; }
+
+  .toast {
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    width: calc(100vw - 24px);
+    max-width: 460px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1325,6 +1374,24 @@ textarea {
   .section-actions {
     justify-content: flex-start;
     width: 100%;
+  }
+
+  .mod-upload-panel {
+    align-items: stretch;
+  }
+
+  .mod-upload-actions,
+  .mod-upload-copy {
+    width: 100%;
+  }
+
+  .mod-upload-actions .btn {
+    flex: 1 1 180px;
+  }
+
+  .mod-actions .btn,
+  .mod-actions .mod-badge {
+    flex: 1 1 130px;
   }
 }
 
@@ -1346,9 +1413,23 @@ textarea {
   }
 
   .status-badge {
-    max-width: 36vw;
+    max-width: none;
     padding-left: 8px;
     padding-right: 8px;
+  }
+
+  .status-badge span:last-child {
+    display: none;
+  }
+
+  .btn {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .mod-upload-actions .btn {
+    flex-basis: 100%;
+    width: 100%;
   }
 
   .card {

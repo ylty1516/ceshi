@@ -13,6 +13,19 @@ const CUSTOM_MODS_DIR = '/home/steam/custom-mods';
 const GAME_MODS_DIR = path.join(config.GAME_DIR, 'Mods');
 const PREINSTALLED_MODS_DIR = '/home/steam/preinstalled-mods';
 const METADATA_SUFFIX = '.panel-meta.json';
+const CLIENT_PACK_FILENAME = 'stardew-client-mods.zip';
+const SERVER_ONLY_MOD_IDS = new Set([
+  'AIdev.AutoHideHost',
+  'puppystardew.ServerAutoLoad',
+  'mikko.Always_On_Server',
+  'puppystardew.SkillLevelGuard',
+]);
+const SERVER_ONLY_MOD_FOLDERS = new Set([
+  'AutoHideHost',
+  'ServerAutoLoad',
+  'AlwaysOnServer',
+  'SkillLevelGuard',
+]);
 
 function isSuccessful(result) {
   return result && result.status === 0;
@@ -80,6 +93,21 @@ function getPreinstalledModFolders() {
 
 function getMetadataPath(baseName) {
   return path.join(CUSTOM_MODS_DIR, `${baseName}${METADATA_SUFFIX}`);
+}
+
+function isServerOnlyMod(manifest, folder, preinstalledFolders = new Set()) {
+  const uniqueId = manifest && manifest.id;
+  return SERVER_ONLY_MOD_IDS.has(uniqueId) ||
+    SERVER_ONLY_MOD_FOLDERS.has(folder) ||
+    preinstalledFolders.has(folder);
+}
+
+function getClientCompatibility(manifest, folder, preinstalledFolders = new Set()) {
+  const serverOnly = isServerOnlyMod(manifest, folder, preinstalledFolders);
+  return {
+    clientRequired: !serverOnly,
+    clientCompatibility: serverOnly ? 'server-only' : 'client-required',
+  };
 }
 
 function loadMetadataByBaseName(baseName) {
@@ -180,6 +208,7 @@ function getMods(req, res) {
           enabled: true,
           isCustom: !preinstalledFolders.has(entry.name),
           folder: entry.name,
+          ...getClientCompatibility(manifest, entry.name, preinstalledFolders),
         });
         seenFolders.add(entry.name);
       }
@@ -206,6 +235,7 @@ function getMods(req, res) {
             enabled: true,
             isCustom: true,
             folder: entry.name,
+            ...getClientCompatibility(manifest, entry.name, preinstalledFolders),
           });
           seenFolders.add(entry.name);
         } else if (entry.name.endsWith('.zip')) {
@@ -224,6 +254,8 @@ function getMods(req, res) {
             enabled: true,
             isCustom: true,
             folder: baseName,
+            clientRequired: true,
+            clientCompatibility: 'client-required',
           });
         }
       }
@@ -231,6 +263,101 @@ function getMods(req, res) {
   } catch (e) {}
 
   res.json({ mods, total: mods.length });
+}
+
+function getClientPackEntries() {
+  const packEntries = [];
+  const preinstalledFolders = getPreinstalledModFolders();
+
+  if (!fs.existsSync(GAME_MODS_DIR)) {
+    return packEntries;
+  }
+
+  const root = path.resolve(GAME_MODS_DIR);
+  const entries = fs.readdirSync(GAME_MODS_DIR, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const modDir = path.resolve(GAME_MODS_DIR, entry.name);
+    if (!modDir.startsWith(root + path.sep)) {
+      continue;
+    }
+
+    const manifest = readManifest(modDir, entry.name);
+    if (!manifest) {
+      continue;
+    }
+
+    const compatibility = getClientCompatibility(manifest, entry.name, preinstalledFolders);
+    if (!compatibility.clientRequired) {
+      continue;
+    }
+
+    packEntries.push({
+      folder: entry.name,
+      name: manifest.name,
+      id: manifest.id,
+      version: manifest.version,
+    });
+  }
+
+  return packEntries.sort((a, b) => a.folder.localeCompare(b.folder));
+}
+
+/**
+ * GET /api/mods/client-pack
+ * Download a zip containing only mods that players may need locally.
+ */
+function downloadClientPack(req, res) {
+  const packEntries = getClientPackEntries();
+
+  if (packEntries.length === 0) {
+    return sendError(res, req, new AppError('No client-side mods need packaging', {
+      status: 404,
+      code: 'MOD_CLIENT_PACK_EMPTY',
+      cause: 'The server currently has no custom or content mods that players need to install locally.',
+      action: 'Upload a client/content mod first, or let players use the server without an extra mod pack.',
+    }));
+  }
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'puppy-client-mods-'));
+  const zipPath = path.join(tempDir, CLIENT_PACK_FILENAME);
+
+  try {
+    const zipTargets = packEntries.map(entry => `./${entry.folder}`);
+    runCommand('zip', ['-qr', zipPath, ...zipTargets], {
+      cwd: GAME_MODS_DIR,
+      timeout: 180000,
+    });
+  } catch (error) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    return sendError(res, req, error, {
+      status: 500,
+      code: 'MOD_CLIENT_PACK_CREATE_FAILED',
+      message: 'Failed to create client mod pack',
+      cause: error.cause || 'The panel could not package the client-required mods.',
+      details: error.details || error.message,
+      action: error.action || 'Rebuild the Docker image so the zip command is available, then retry.',
+    });
+  }
+
+  res.setHeader('X-Client-Mod-Count', String(packEntries.length));
+  res.download(zipPath, CLIENT_PACK_FILENAME, (error) => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (error && !res.headersSent) {
+      return sendError(res, req, error, {
+        status: 500,
+        code: 'MOD_CLIENT_PACK_DOWNLOAD_FAILED',
+        message: 'Failed to download client mod pack',
+        cause: 'The zip file was created, but the panel could not send it to the browser.',
+        details: error.message,
+        action: 'Retry the download and check panel logs if it fails again.',
+      });
+    }
+  });
 }
 
 /**
@@ -436,4 +563,4 @@ function deleteMod(req, res) {
   }
 }
 
-module.exports = { getMods, uploadMod, deleteMod };
+module.exports = { getMods, uploadMod, deleteMod, downloadClientPack };

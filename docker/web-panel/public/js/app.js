@@ -127,8 +127,15 @@ const translations = {
     'mods.uploadNoManifest': '模组压缩包已上传，但未找到 manifest.json，请检查压缩包结构。',
     'mods.uploadFallback': '模组压缩包已上传，但自动安装失败。重启后仍会尝试从压缩包安装。',
     'mods.deleteNeedsRestart': '模组已删除。重启服务器后将完全卸载。',
+    'mods.clientPack': '下载玩家 Mod 包',
+    'mods.clientPackHint': '会打包玩家本地可能需要安装的自定义/内容类 Mod，服务器专用 Mod 会自动排除。',
+    'mods.clientRequired': '玩家需安装',
+    'mods.serverOnly': '服务器专用',
+    'mods.clientPackEmpty': '当前没有需要玩家本地安装的 Mod。',
     'toast.modUploadOk': '模组上传成功！重启服务器后生效。', 'toast.modUploadFail': '模组上传失败',
     'toast.modDeleteOk': '模组已删除', 'toast.modDeleteFail': '模组删除失败',
+    'toast.modClientPackOk': '玩家 Mod 包已开始下载。',
+    'toast.modClientPackFail': '玩家 Mod 包下载失败',
     'config.group.Steam': 'Steam 设置', 'config.group.VNC': 'VNC 设置',
     'config.group.Display': '显示设置', 'config.group.Performance': '性能优化',
     'config.group.Backup': '备份设置', 'config.group.Stability': '稳定性',
@@ -239,8 +246,15 @@ const translations = {
     'mods.uploadNoManifest': 'Mod archive uploaded, but no manifest.json was found. Check the archive structure.',
     'mods.uploadFallback': 'Mod archive uploaded, but automatic installation failed. Restart may still install it from the archive.',
     'mods.deleteNeedsRestart': 'Mod deleted. Restart the server to fully unload it.',
+    'mods.clientPack': 'Download Client Mod Pack',
+    'mods.clientPackHint': 'Packages custom/content mods players may need locally. Server-only mods are excluded.',
+    'mods.clientRequired': 'Client required',
+    'mods.serverOnly': 'Server only',
+    'mods.clientPackEmpty': 'No client-side mods need to be downloaded.',
     'toast.modUploadOk': 'Mod uploaded! Restart server to apply.', 'toast.modUploadFail': 'Mod upload failed',
     'toast.modDeleteOk': 'Mod deleted', 'toast.modDeleteFail': 'Mod delete failed',
+    'toast.modClientPackOk': 'Client mod pack download started.',
+    'toast.modClientPackFail': 'Client mod pack download failed',
     'config.group.Steam': 'Steam', 'config.group.VNC': 'VNC',
     'config.group.Display': 'Display', 'config.group.Performance': 'Performance',
     'config.group.Backup': 'Backup', 'config.group.Stability': 'Stability',
@@ -1422,12 +1436,20 @@ async function loadMods() {
   // Upload section
   var uploadHtml = `
     <div class="card mod-upload-panel">
-      <input type="file" id="modFileInput" class="hidden-file" accept=".zip" onchange="handleModUpload(this)">
-      <button class="btn btn-primary" onclick="document.getElementById('modFileInput').click()">
-        ${icon('mods', 'icon')} ${t('mods.upload')}
-      </button>
-      <span class="mod-upload-hint">${t('mods.uploadHint')}</span>
-      <span id="modUploadStatus" class="mod-upload-status"></span>
+      <div class="mod-upload-actions">
+        <input type="file" id="modFileInput" class="hidden-file" accept=".zip" onchange="handleModUpload(this)">
+        <button class="btn btn-primary" type="button" onclick="document.getElementById('modFileInput').click()">
+          ${icon('mods', 'icon')} <span>${t('mods.upload')}</span>
+        </button>
+        <button class="btn btn-success" type="button" onclick="downloadClientModPack()">
+          ${icon('download', 'icon')} <span>${t('mods.clientPack')}</span>
+        </button>
+      </div>
+      <div class="mod-upload-copy">
+        <span class="mod-upload-hint">${t('mods.uploadHint')}</span>
+        <span class="mod-upload-hint">${t('mods.clientPackHint')}</span>
+        <span id="modUploadStatus" class="mod-upload-status"></span>
+      </div>
     </div>
   `;
 
@@ -1438,8 +1460,11 @@ async function loadMods() {
 
   list.innerHTML = uploadHtml + data.mods.map(function(m) {
     var deleteBtn = m.isCustom
-      ? '<button class="btn btn-sm btn-danger-outline mod-delete-btn" data-folder="' + escapeHtml(m.folder) + '" data-name="' + escapeHtml(m.name) + '">' + icon('trash', 'icon') + ' ' + t('mods.delete') + '</button>'
+      ? '<button class="btn btn-sm btn-danger-outline mod-delete-btn" data-folder="' + escapeHtml(m.folder) + '" data-name="' + escapeHtml(m.name) + '">' + icon('trash', 'icon') + ' <span>' + t('mods.delete') + '</span></button>'
       : '';
+    var clientBadge = m.clientRequired
+      ? '<span class="mod-badge client-required">' + t('mods.clientRequired') + '</span>'
+      : '<span class="mod-badge server-only">' + t('mods.serverOnly') + '</span>';
     return '<div class="mod-item">' +
       '<div class="mod-info">' +
         '<div class="mod-name">' + escapeHtml(m.name) + '</div>' +
@@ -1448,6 +1473,7 @@ async function loadMods() {
       '</div>' +
       '<div class="mod-actions">' +
         '<span class="mod-badge ' + (m.isCustom ? 'custom' : '') + '">' + (m.isCustom ? t('mods.custom') : t('mods.builtin')) + '</span>' +
+        clientBadge +
         deleteBtn +
       '</div>' +
     '</div>';
@@ -1507,6 +1533,22 @@ async function deleteMod(folder, name) {
   } else {
     showToast(formatApiError(data, t('toast.modDeleteFail')), 'error', 7000);
   }
+}
+
+async function downloadClientModPack() {
+  const data = await API.download('/api/mods/client-pack', 'stardew-client-mods.zip');
+
+  if (data && data.success) {
+    showToast(t('toast.modClientPackOk'), 'success');
+    return;
+  }
+
+  if (data && data.code === 'MOD_CLIENT_PACK_EMPTY') {
+    showToast(t('mods.clientPackEmpty'), 'warn', 5000);
+    return;
+  }
+
+  showToast(formatApiError(data, t('toast.modClientPackFail')), 'error', 7000);
 }
 
 function getModUploadToast(data) {
