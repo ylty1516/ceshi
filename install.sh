@@ -3,8 +3,25 @@
 
 set -e
 
-REPO_URL="https://github.com/ylty1516/puppy-stardew-server-updated.git"
-ARCHIVE_URL="https://github.com/ylty1516/puppy-stardew-server-updated/archive/refs/heads/main.tar.gz"
+DIRECT_REPO_URL="https://github.com/ylty1516/puppy-stardew-server-updated.git"
+DIRECT_RELEASE_ARCHIVE_URL="https://github.com/ylty1516/puppy-stardew-server-updated/releases/latest/download/puppy-stardew-server-updated.tar.gz"
+DIRECT_SOURCE_ARCHIVE_URL="https://github.com/ylty1516/puppy-stardew-server-updated/archive/refs/heads/main.tar.gz"
+GITHUB_PROXY_PREFIX="${PUPPY_GITHUB_PROXY_PREFIX:-https://gh.sixyin.com/}"
+if [ "${PUPPY_USE_GITHUB_PROXY:-true}" = "false" ]; then
+  GITHUB_PROXY_PREFIX=""
+fi
+
+proxy_url() {
+  if [ -n "$GITHUB_PROXY_PREFIX" ]; then
+    printf '%s%s\n' "${GITHUB_PROXY_PREFIX%/}/" "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+REPO_URL="${PUPPY_REPO_URL:-$(proxy_url "$DIRECT_REPO_URL")}"
+ARCHIVE_URL="${PUPPY_ARCHIVE_URL:-$(proxy_url "$DIRECT_RELEASE_ARCHIVE_URL")}"
+SOURCE_ARCHIVE_URL="${PUPPY_SOURCE_ARCHIVE_URL:-$(proxy_url "$DIRECT_SOURCE_ARCHIVE_URL")}"
 REPO_DIR="${PUPPY_STARDEW_DIR:-puppy-stardew-server-updated}"
 
 info() {
@@ -21,6 +38,47 @@ run_quick_start() {
   bash quick-start-zh.sh
 }
 
+download_archive() {
+  url="$1"
+  command -v tar >/dev/null 2>&1 || return 1
+
+  TMP_ARCHIVE="$(mktemp)" || return 1
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL --connect-timeout 15 --retry 2 --retry-delay 2 "$url" -o "$TMP_ARCHIVE"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q --timeout=30 --tries=2 "$url" -O "$TMP_ARCHIVE"
+  else
+    rm -f "$TMP_ARCHIVE"
+    return 1
+  fi
+
+  if [ $? -ne 0 ]; then
+    rm -f "$TMP_ARCHIVE"
+    return 1
+  fi
+
+  rm -rf "$REPO_DIR"
+  mkdir -p "$REPO_DIR" || {
+    rm -f "$TMP_ARCHIVE"
+    return 1
+  }
+
+  if tar -xzf "$TMP_ARCHIVE" --strip-components=1 -C "$REPO_DIR"; then
+    rm -f "$TMP_ARCHIVE"
+    return 0
+  fi
+
+  rm -rf "$REPO_DIR"
+  rm -f "$TMP_ARCHIVE"
+  return 1
+}
+
+clone_repo() {
+  url="$1"
+  command -v git >/dev/null 2>&1 || return 1
+  git clone --depth 1 "$url" "$REPO_DIR"
+}
+
 if [ -f "docker-compose.yml" ] && [ -f ".env.example" ] && [ -f "quick-start-zh.sh" ]; then
   info "检测到当前目录已经是项目目录，直接启动中文安装向导。"
   run_quick_start
@@ -34,36 +92,43 @@ if [ -d "$REPO_DIR" ]; then
   exit 0
 fi
 
-if command -v git >/dev/null 2>&1; then
-  info "正在克隆项目仓库..."
-  git clone "$REPO_URL" "$REPO_DIR" || die "克隆仓库失败"
+info "正在下载项目压缩包（比 git clone 更快）..."
+if download_archive "$ARCHIVE_URL"; then
   cd "$REPO_DIR" || die "无法进入目录 $REPO_DIR"
   run_quick_start
   exit 0
 fi
 
-info "未检测到 git，尝试下载 main 分支压缩包..."
-TMP_ARCHIVE="$(mktemp)"
-cleanup() {
-  rm -f "$TMP_ARCHIVE"
-}
-trap cleanup EXIT
-
-if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$ARCHIVE_URL" -o "$TMP_ARCHIVE" || die "下载项目压缩包失败"
-elif command -v wget >/dev/null 2>&1; then
-  wget -q "$ARCHIVE_URL" -O "$TMP_ARCHIVE" || die "下载项目压缩包失败"
-else
-  die "需要先安装 git、curl 或 wget 中的任意一个"
+if [ "$ARCHIVE_URL" != "$DIRECT_RELEASE_ARCHIVE_URL" ]; then
+  info "Release 代理压缩包下载失败，尝试 GitHub Release 原地址..."
+  if download_archive "$DIRECT_RELEASE_ARCHIVE_URL"; then
+    cd "$REPO_DIR" || die "无法进入目录 $REPO_DIR"
+    run_quick_start
+    exit 0
+  fi
 fi
 
-command -v tar >/dev/null 2>&1 || die "系统缺少 tar，无法解压项目压缩包"
-mkdir -p "$REPO_DIR"
-tar -xzf "$TMP_ARCHIVE" --strip-components=1 -C "$REPO_DIR" || die "解压项目压缩包失败"
-cd "$REPO_DIR" || die "无法进入目录 $REPO_DIR"
-
-if [ ! -f "quick-start-zh.sh" ]; then
-  die "项目文件不完整，缺少 quick-start-zh.sh"
+info "Release 压缩包不可用，尝试 main 分支源码压缩包..."
+if download_archive "$SOURCE_ARCHIVE_URL"; then
+  cd "$REPO_DIR" || die "无法进入目录 $REPO_DIR"
+  run_quick_start
+  exit 0
 fi
 
-run_quick_start
+if [ "$SOURCE_ARCHIVE_URL" != "$DIRECT_SOURCE_ARCHIVE_URL" ]; then
+  info "源码代理压缩包下载失败，尝试 GitHub 源码原地址..."
+  if download_archive "$DIRECT_SOURCE_ARCHIVE_URL"; then
+    cd "$REPO_DIR" || die "无法进入目录 $REPO_DIR"
+    run_quick_start
+    exit 0
+  fi
+fi
+
+info "压缩包下载失败，尝试浅克隆仓库..."
+if clone_repo "$REPO_URL" || { [ "$REPO_URL" != "$DIRECT_REPO_URL" ] && clone_repo "$DIRECT_REPO_URL"; }; then
+  cd "$REPO_DIR" || die "无法进入目录 $REPO_DIR"
+  run_quick_start
+  exit 0
+fi
+
+die "下载项目失败，请检查网络，或设置 PUPPY_USE_GITHUB_PROXY=false 后重试"

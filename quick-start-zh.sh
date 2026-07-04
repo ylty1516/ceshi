@@ -289,13 +289,16 @@ start_server() {
     print_step "步骤 5: 启动服务器..."
     echo ""
 
-    print_info "拉取 Docker 镜像（可能需要几分钟）..."
-    echo ""
-    # 显示拉取进度
-    if $COMPOSE_CMD pull; then
-        print_success "镜像拉取完成！"
+    if [ "${PUPPY_COMPOSE_PULL:-false}" = "true" ]; then
+        print_info "按配置拉取 Docker 镜像（可能需要几分钟）..."
+        echo ""
+        if $COMPOSE_CMD pull; then
+            print_success "镜像拉取完成！"
+        else
+            print_warning "拉取镜像时出现错误，尝试启动..."
+        fi
     else
-        print_warning "拉取镜像时出现错误，尝试启动..."
+        print_info "跳过 docker compose pull：本项目默认本地构建镜像，这样安装更快。"
     fi
 
     echo ""

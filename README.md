@@ -180,10 +180,16 @@ Web 面板会优先读取这个 SMAPI 状态桥，而不是只靠日志推断。
 一行安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/install.sh | bash
+curl -fsSL https://gh.sixyin.com/https://github.com/ylty1516/puppy-stardew-server-updated/releases/latest/download/install.sh | bash
 ```
 
-脚本会自动拉取本仓库、生成 `.env`、初始化数据目录权限，并询问是否立即启动 Docker 服务。
+脚本会优先下载 GitHub Release 里的项目压缩包，失败时再回退到 main 分支源码压缩包和浅克隆；它会自动生成 `.env`、初始化数据目录权限，并询问是否立即启动 Docker 服务。
+
+如果代理不可用，可以使用 GitHub 原地址：
+
+```bash
+curl -fsSL https://github.com/ylty1516/puppy-stardew-server-updated/releases/latest/download/install.sh | bash
+```
 
 如果你已经手动克隆了仓库，也可以在项目目录里运行：
 

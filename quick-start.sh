@@ -327,8 +327,12 @@ start_server() {
     print_step "Step 5: Starting the server..."
 
     echo ""
-    print_info "Pulling Docker image (this may take a few minutes)..."
-    $COMPOSE_CMD pull
+    if [ "${PUPPY_COMPOSE_PULL:-false}" = "true" ]; then
+        print_info "Pulling Docker image (this may take a few minutes)..."
+        $COMPOSE_CMD pull || print_warning "Image pull failed, continuing with local build..."
+    else
+        print_info "Skipping docker compose pull: this project builds local images by default, which avoids a slow unnecessary pull."
+    fi
 
     echo ""
     print_info "Starting server..."
