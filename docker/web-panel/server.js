@@ -25,6 +25,7 @@ const ENV_FILE = process.env.ENV_FILE || '/home/steam/web-panel/data/runtime.env
 const MANUAL_PAUSE_FILE = process.env.MANUAL_PAUSE_FILE || '/home/steam/web-panel/data/manual-pause.json';
 const AUTO_PAUSE_FILE = process.env.AUTO_PAUSE_FILE || '/home/steam/web-panel/data/auto-pause.json';
 const GAME_STATE_FILE = process.env.GAME_STATE_FILE || '/home/steam/web-panel/data/game-state.json';
+const HOST_COMMAND_FILE = process.env.HOST_COMMAND_FILE || '/home/steam/web-panel/data/host-command.json';
 
 // Export paths for use by API modules
 const config = {
@@ -40,6 +41,7 @@ const config = {
   MANUAL_PAUSE_FILE,
   AUTO_PAUSE_FILE,
   GAME_STATE_FILE,
+  HOST_COMMAND_FILE,
 };
 module.exports = config;
 

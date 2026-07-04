@@ -29,6 +29,8 @@ namespace AutoHideHost
         public int ManualPausePollTicks { get; set; } = 60;
         public string GameStateFile { get; set; } = "/home/steam/web-panel/data/game-state.json";
         public int GameStateWriteTicks { get; set; } = 60;
+        public string HostCommandFile { get; set; } = "/home/steam/web-panel/data/host-command.json";
+        public int HostCommandPollTicks { get; set; } = 30;
         public bool EnableFestivalProxyTrigger { get; set; } = true;
         public int FestivalProxyCooldownSeconds { get; set; } = 20;
         public bool AutoSkipSkippableEvents { get; set; } = false;

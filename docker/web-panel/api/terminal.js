@@ -3,7 +3,11 @@
  * Connects to SMAPI stdin/stdout for Steam Guard code input
  */
 
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { execSync, spawn } = require('child_process');
+const config = require('../server');
 
 // Only allow one terminal session at a time
 let activeTerminal = null;
@@ -14,6 +18,12 @@ const configuredCommandTimeoutMs = parseInt(process.env.PANEL_COMMAND_TIMEOUT_MS
 const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeoutMs) && configuredCommandTimeoutMs > 0
   ? configuredCommandTimeoutMs
   : 1500;
+const HOST_COMMANDS = new Set([
+  'autohide_expansion_mode start',
+  'autohide_expansion_mode finish',
+  'hidehost',
+  'showhost',
+]);
 
 function resetIdleTimeout() {
   if (idleTimeout) clearTimeout(idleTimeout);
@@ -41,6 +51,24 @@ function closeTerminal() {
     activeWs._terminalProc = null;
     activeWs = null;
   }
+}
+
+function writeHostCommandFallback(command) {
+  if (!HOST_COMMANDS.has(String(command || '').trim().toLowerCase()) || !config.HOST_COMMAND_FILE) {
+    return false;
+  }
+
+  const payload = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}`,
+    command: String(command || '').trim().toLowerCase(),
+    requestedAt: new Date().toISOString(),
+    requestedBy: 'web-terminal-fallback',
+  };
+  fs.mkdirSync(path.dirname(config.HOST_COMMAND_FILE), { recursive: true });
+  const tmpPath = `${config.HOST_COMMAND_FILE}.tmp-terminal-${process.pid}`;
+  fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, config.HOST_COMMAND_FILE);
+  return payload.id;
 }
 
 function openTerminal(ws) {
@@ -151,9 +179,26 @@ function handleInput(ws, data) {
       data: `> ${data}\r\n`,
     }));
   } catch (e) {
+    try {
+      const fallbackId = writeHostCommandFallback(input.trim());
+      if (fallbackId) {
+        ws.send(JSON.stringify({
+          type: 'terminal:output',
+          data: `[Panel] Direct SMAPI stdin was denied, so this built-in host command was queued through AutoHideHost (${fallbackId}).\r\n`,
+        }));
+        return;
+      }
+    } catch (fallbackError) {
+      ws.send(JSON.stringify({
+        type: 'terminal:error',
+        data: `Failed to send input and host-command fallback failed: ${fallbackError.message}`,
+      }));
+      return;
+    }
+
     ws.send(JSON.stringify({
       type: 'terminal:error',
-      data: `Failed to send input: ${e.message}`,
+      data: `Failed to send input: ${e.message}. If this is a normal SMAPI command, use docker attach puppy-stardew or VNC. Built-in host buttons use the safer file command channel.`,
     }));
   }
 }

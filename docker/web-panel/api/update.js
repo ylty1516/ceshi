@@ -89,6 +89,46 @@ function readLocalStatus() {
   };
 }
 
+function describeManagerError(error) {
+  const rawMessage = error && error.message ? String(error.message) : 'Manager service is unavailable';
+  const rawDetails = error && error.details ? String(error.details) : '';
+  const text = [rawMessage, rawDetails, error && error.code].filter(Boolean).join('\n');
+
+  if (/MANAGER_NOT_CONFIGURED/i.test(text)) {
+    return {
+      code: 'MANAGER_NOT_CONFIGURED',
+      message: 'Update manager is not configured.',
+      cause: 'MANAGER_URL is empty, so the web panel cannot contact the stardew-manager service.',
+      action: 'Recreate the stack with the latest docker-compose.yml, then check that MANAGER_URL points to http://stardew-manager:18700.',
+    };
+  }
+
+  if (/timeout|timed out/i.test(text)) {
+    return {
+      code: 'MANAGER_TIMEOUT',
+      message: 'Update manager request timed out.',
+      cause: 'The stardew-manager container did not respond before the panel timeout.',
+      action: 'Run "docker logs puppy-stardew-manager" and check whether the container is stuck or restarting.',
+    };
+  }
+
+  if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|502|Bad Gateway/i.test(text)) {
+    return {
+      code: 'MANAGER_UNREACHABLE',
+      message: 'Update manager is unreachable.',
+      cause: 'The web panel cannot reach the stardew-manager container that runs Docker update tasks.',
+      action: 'Run "docker ps | grep puppy-stardew-manager", then "docker logs puppy-stardew-manager". If it is missing, run "docker compose up -d --build stardew-manager stardew-server".',
+    };
+  }
+
+  return {
+    code: 'MANAGER_STATUS_FAILED',
+    message: 'Failed to read update manager status.',
+    cause: 'The stardew-manager service returned an unexpected error.',
+    action: 'Check docker logs puppy-stardew-manager and verify Docker socket and project directory mounts.',
+  };
+}
+
 function requestManager(method, route, body = null) {
   const managerUrl = process.env.MANAGER_URL || '';
   if (!managerUrl) {
@@ -116,6 +156,7 @@ function requestManager(method, route, body = null) {
 
     const payload = body ? JSON.stringify(body) : '';
     const client = parsed.protocol === 'https:' ? https : http;
+    let timedOut = false;
     const request = client.request({
       protocol: parsed.protocol,
       hostname: parsed.hostname,
@@ -149,7 +190,7 @@ function requestManager(method, route, body = null) {
           return;
         }
 
-        reject(new AppError(data.error || 'Manager request failed', {
+        reject(new AppError(data.error || `HTTP ${response.statusCode}`, {
           status: response.statusCode || 500,
           code: 'MANAGER_UPDATE_FAILED',
           cause: 'The manager service rejected the update request.',
@@ -160,9 +201,20 @@ function requestManager(method, route, body = null) {
     });
 
     request.on('timeout', () => {
+      timedOut = true;
       request.destroy(new Error('Manager request timed out'));
     });
-    request.on('error', reject);
+    request.on('error', (error) => {
+      reject(new AppError(timedOut ? 'Manager request timed out' : 'Manager service is unreachable', {
+        status: 503,
+        code: timedOut ? 'MANAGER_TIMEOUT' : 'MANAGER_UNREACHABLE',
+        cause: timedOut
+          ? 'The stardew-manager container did not respond before the panel timeout.'
+          : 'The web panel could not connect to the stardew-manager container.',
+        details: error.message,
+        action: 'Check that the stardew-manager container is running and reachable at MANAGER_URL.',
+      }));
+    });
     if (payload) request.write(payload);
     request.end();
   });
@@ -174,21 +226,35 @@ async function getUpdateStatus(req, res) {
     res.json(status);
   } catch (error) {
     const localStatus = readLocalStatus();
+    const managerIssue = describeManagerError(error);
     if (localStatus.state !== 'idle') {
       res.json({
         ...localStatus,
+        canStart: false,
+        managerAvailable: false,
+        managerUnavailable: true,
         managerError: error.message,
+        code: managerIssue.code,
+        cause: managerIssue.cause,
+        action: managerIssue.action,
       });
       return;
     }
 
-    return sendError(res, req, error, {
-      status: 503,
-      code: 'UPDATE_STATUS_UNAVAILABLE',
-      message: 'Failed to read update status',
-      cause: 'The panel could not reach the manager service and no local update status exists yet.',
-      details: error.message,
-      action: 'Check that the stardew-manager container is running.',
+    res.json({
+      ...localStatus,
+      state: 'unknown',
+      phase: 'manager_unavailable',
+      message: managerIssue.message,
+      messageKey: 'update.managerUnavailable',
+      updatedAt: new Date().toISOString(),
+      managerAvailable: false,
+      managerUnavailable: true,
+      canStart: false,
+      managerError: error.message,
+      code: managerIssue.code,
+      cause: managerIssue.cause,
+      action: managerIssue.action,
     });
   }
 }

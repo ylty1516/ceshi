@@ -230,6 +230,8 @@ const translations = {
     'update.phase.idle': '空闲',
     'update.phase.queued': '排队中',
     'update.phase.queued_timeout': '排队超时',
+    'update.phase.status_read_failed': '状态读取失败',
+    'update.phase.manager_unavailable': '管理容器不可达',
     'update.phase.backup': '备份中',
     'update.phase.download': '拉取代码',
     'update.phase.prepare': '准备配置',
@@ -238,6 +240,7 @@ const translations = {
     'update.meta': '阶段：{phase} · 更新时间：{time}',
     'update.backupDir': '备份目录：{path}',
     'update.exitCode': '退出码：{code}',
+    'update.managerUnavailable': '更新管理容器不可达',
     'login.subtitle': '服务器管理面板', 'login.password': '密码', 'login.button': '登录',
     'setup.title': '设置管理密码', 'setup.subtitle': '首次使用，请设置您的管理密码',
     'setup.password': '设置密码', 'setup.confirm': '确认密码', 'setup.button': '开始使用',
@@ -450,6 +453,8 @@ const translations = {
     'update.phase.idle': 'Idle',
     'update.phase.queued': 'Queued',
     'update.phase.queued_timeout': 'Queued timeout',
+    'update.phase.status_read_failed': 'Status read failed',
+    'update.phase.manager_unavailable': 'Manager unreachable',
     'update.phase.backup': 'Backing up',
     'update.phase.download': 'Pulling code',
     'update.phase.prepare': 'Preparing config',
@@ -458,6 +463,7 @@ const translations = {
     'update.meta': 'Phase: {phase} · Updated: {time}',
     'update.backupDir': 'Backup: {path}',
     'update.exitCode': 'Exit code: {code}',
+    'update.managerUnavailable': 'Update manager is unreachable',
     'login.subtitle': 'Server Management Panel', 'login.password': 'Password', 'login.button': 'Login',
     'setup.title': 'Set Admin Password', 'setup.subtitle': 'First time setup - please create your admin password',
     'setup.password': 'Password', 'setup.confirm': 'Confirm Password', 'setup.button': 'Get Started',
@@ -1788,7 +1794,9 @@ function getPanelUpdateTone(state) {
 }
 
 function getPanelUpdatePhaseLabel(phase) {
-  return t('update.phase.' + (phase || 'idle'));
+  const key = 'update.phase.' + (phase || 'idle');
+  const label = t(key);
+  return label === key ? (phase || 'idle') : label;
 }
 
 function renderPanelUpdateStatus(status) {
@@ -1802,8 +1810,11 @@ function renderPanelUpdateStatus(status) {
   const state = getPanelUpdateState(status);
   const phase = status?.phase || 'idle';
   const tone = getPanelUpdateTone(state);
-  const title = t('update.state.' + state);
-  const message = status?.message || (state === 'idle' ? t('update.hint') : '');
+  const titleKey = 'update.state.' + state;
+  const title = t(titleKey) === titleKey ? (status?.messageKey ? t(status.messageKey) : state) : t(titleKey);
+  const message = status?.messageKey
+    ? t(status.messageKey)
+    : (status?.message || (state === 'idle' ? t('update.hint') : ''));
   const updatedAt = status?.updatedAt ? formatBackupTimestamp(status.updatedAt) : '--';
   const meta = [
     tf('update.meta', {
@@ -1819,7 +1830,16 @@ function renderPanelUpdateStatus(status) {
     meta.push(tf('update.exitCode', { code: String(status.exitCode) }));
   }
   if (status?.managerError) {
-    meta.push(status.managerError);
+    meta.push(`Manager: ${status.managerError}`);
+  }
+  if (status?.cause) {
+    meta.push(`${t('logs.cause')}: ${status.cause}`);
+  }
+  if (status?.action) {
+    meta.push(`${t('logs.action')}: ${status.action}`);
+  }
+  if (status?.code) {
+    meta.push(`Code: ${status.code}`);
   }
 
   statusEl.className = 'update-status ' + tone;
@@ -1838,8 +1858,9 @@ function renderPanelUpdateStatus(status) {
   }
 
   const running = state === 'running';
+  const managerBlocked = status?.managerUnavailable === true || status?.canStart === false;
   if (button) {
-    button.disabled = running;
+    button.disabled = running || managerBlocked;
   }
   if (buttonText) {
     buttonText.textContent = running ? t('update.runningButton') : t('update.button');
@@ -1863,6 +1884,11 @@ async function loadPanelUpdateStatus(silent) {
         message: formatApiError(data, t('update.statusFail')),
         updatedAt: new Date().toISOString(),
         logTail: data.logTail || '',
+        code: data.code || '',
+        cause: data.cause || '',
+        action: data.action || '',
+        managerUnavailable: data.code && String(data.code).startsWith('MANAGER_'),
+        canStart: !(data.code && String(data.code).startsWith('MANAGER_')),
       };
       renderPanelUpdateStatus(failedStatus);
       if (!silent) {

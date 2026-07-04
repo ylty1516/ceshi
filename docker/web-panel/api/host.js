@@ -1,65 +1,18 @@
 /**
- * Host control helpers for SMAPI-only server actions.
+ * Host control helpers for SMAPI-side server actions.
+ *
+ * The panel writes a small command file and AutoHideHost executes it from the
+ * game thread. This avoids fragile /proc/<pid>/fd/0 stdin writes, which can be
+ * denied by container TTY/proc permissions.
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
-const { execSync } = require('child_process');
-const config = require('../server');
+const path = require('path');
 const { AppError, sendError } = require('../errors');
+const config = require('../server');
 
-const configuredCommandTimeoutMs = parseInt(process.env.PANEL_COMMAND_TIMEOUT_MS || '1500', 10);
-const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeoutMs) && configuredCommandTimeoutMs > 0
-  ? configuredCommandTimeoutMs
-  : 1500;
-
-function getSmapiPid() {
-  try {
-    return execSync('pgrep -f StardewModdingAPI', {
-      encoding: 'utf-8',
-      timeout: COMMAND_TIMEOUT_MS,
-    }).trim().split('\n')[0];
-  } catch (error) {
-    throw new AppError('SMAPI process not found', {
-      status: 503,
-      code: 'SMAPI_PROCESS_NOT_FOUND',
-      cause: 'The game process is not running, so the panel cannot send host-control commands.',
-      action: 'Start or restart the server, wait until SMAPI is loaded, then retry.',
-    });
-  }
-}
-
-function sendSmapiCommand(command) {
-  const allowed = new Set([
-    'autohide_expansion_mode start',
-    'autohide_expansion_mode finish',
-    'autohide_expansion_mode status',
-    'hidehost',
-    'showhost',
-  ]);
-
-  if (!allowed.has(command)) {
-    throw new AppError('Unsupported host command', {
-      status: 400,
-      code: 'HOST_COMMAND_NOT_ALLOWED',
-      cause: 'The requested command is not in the panel host-control allowlist.',
-      action: 'Use the built-in host control buttons or the SMAPI terminal for manual commands.',
-    });
-  }
-
-  const pid = getSmapiPid();
-  try {
-    fs.writeFileSync(`/proc/${pid}/fd/0`, `${command}\n`);
-    return { pid, command };
-  } catch (error) {
-    throw new AppError('Failed to send SMAPI command', {
-      status: 500,
-      code: 'SMAPI_COMMAND_SEND_FAILED',
-      cause: 'The panel found SMAPI but could not write to its stdin.',
-      details: error.message,
-      action: 'Open the SMAPI terminal page and try the command manually, or restart the container.',
-    });
-  }
-}
+const HOST_COMMAND_TIMEOUT_MS = parseInt(process.env.HOST_COMMAND_TIMEOUT_MS || '12000', 10);
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -79,76 +32,147 @@ function readGameStateSnapshot() {
   }
 }
 
-async function waitForExpansionState(mode, minUpdatedAtMs, timeoutMs = 8000) {
+function createCommandId() {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}`;
+}
+
+function writeHostCommand(command) {
+  const allowed = new Set([
+    'autohide_expansion_mode start',
+    'autohide_expansion_mode finish',
+    'hidehost',
+    'showhost',
+  ]);
+
+  if (!allowed.has(command)) {
+    throw new AppError('Unsupported host command', {
+      status: 400,
+      code: 'HOST_COMMAND_NOT_ALLOWED',
+      cause: 'The requested command is not in the panel host-control allowlist.',
+      action: 'Use the built-in host control buttons or the SMAPI terminal for manual commands.',
+    });
+  }
+
+  if (!config.HOST_COMMAND_FILE) {
+    throw new AppError('Host command file is not configured', {
+      status: 500,
+      code: 'HOST_COMMAND_FILE_NOT_CONFIGURED',
+      cause: 'HOST_COMMAND_FILE is empty, so the panel has nowhere to send host-control requests.',
+      action: 'Recreate the container with the latest environment defaults.',
+    });
+  }
+
+  const payload = {
+    id: createCommandId(),
+    command,
+    requestedAt: new Date().toISOString(),
+    requestedBy: 'web-panel',
+  };
+
+  try {
+    fs.mkdirSync(path.dirname(config.HOST_COMMAND_FILE), { recursive: true });
+    const tmpPath = `${config.HOST_COMMAND_FILE}.tmp-${process.pid}`;
+    fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, config.HOST_COMMAND_FILE);
+    return payload;
+  } catch (error) {
+    throw new AppError('Failed to write host command file', {
+      status: 500,
+      code: 'HOST_COMMAND_WRITE_FAILED',
+      cause: 'The panel could not write the host-control command file used by AutoHideHost.',
+      details: error.message,
+      action: 'Check permissions for /home/steam/web-panel/data and restart the container after updating.',
+    });
+  }
+}
+
+async function waitForHostCommand(commandId, timeoutMs = HOST_COMMAND_TIMEOUT_MS) {
   const startedAt = Date.now();
   let lastState = null;
 
   do {
     lastState = readGameStateSnapshot();
-    const updatedAtMs = lastState && lastState.updatedAt ? Date.parse(lastState.updatedAt) : NaN;
-    const freshEnough = Number.isFinite(updatedAtMs) && updatedAtMs >= minUpdatedAtMs - 1000;
-    const expansion = lastState && lastState.expansionModCompatibility;
-    if (freshEnough && expansion && typeof expansion.autoSkipSkippableEvents === 'boolean') {
-      const autoSkipDisabled = expansion.autoSkipSkippableEvents === false;
-      if (mode === 'start' && autoSkipDisabled && (expansion.manualHostVisible === true || lastState.hostHidden === false)) {
-        return {
-          confirmed: true,
-          state: lastState,
-        };
-      }
-
-      if (mode === 'finish' && autoSkipDisabled && (expansion.manualHostVisible === false || lastState.hostHidden === true)) {
-        return {
-          confirmed: true,
-          state: lastState,
-        };
-      }
+    const hostCommand = lastState && lastState.hostCommand;
+    if (hostCommand && hostCommand.id === commandId) {
+      return {
+        confirmed: true,
+        state: lastState,
+        hostCommand,
+      };
     }
 
-    await sleep(250);
+    await sleep(300);
   } while (Date.now() - startedAt < timeoutMs);
 
   return {
     confirmed: false,
     state: lastState,
+    hostCommand: lastState && lastState.hostCommand ? lastState.hostCommand : null,
   };
 }
 
-function throwUnconfirmedExpansionMode(mode, observed) {
+function throwUnconfirmedHostCommand(command, commandId, observed) {
   const state = observed && observed.state ? observed.state : null;
-  const expansion = state && state.expansionModCompatibility;
-  throw new AppError('Host command was not confirmed by SMAPI state bridge', {
+  throw new AppError('Host command was not confirmed by AutoHideHost', {
     status: 504,
     code: 'HOST_COMMAND_NOT_CONFIRMED',
-    cause: 'The panel sent the SMAPI command, but AutoHideHost did not report the expected state before the confirmation timeout.',
+    cause: 'The panel wrote the command file, but AutoHideHost did not report that it executed the command before the timeout.',
     details: JSON.stringify({
-      mode,
-      updatedAt: state && state.updatedAt,
+      command,
+      commandId,
       worldReady: state && state.worldReady,
       hostHidden: state && state.hostHidden,
-      expansionModCompatibility: expansion || null,
+      hostCommand: observed && observed.hostCommand ? observed.hostCommand : null,
       readError: state && state.readError,
     }),
-    action: 'Confirm AutoHideHost v1.2.9+ is loaded, check the SMAPI console, then retry after the save finishes loading.',
+    action: 'Check that AutoHideHost v1.3.0 or newer is loaded, wait for the save to finish loading, then retry.',
   });
+}
+
+function throwFailedHostCommand(observed) {
+  const hostCommand = observed && observed.hostCommand ? observed.hostCommand : {};
+  throw new AppError('AutoHideHost rejected the host command', {
+    status: 409,
+    code: 'HOST_COMMAND_REJECTED',
+    cause: hostCommand.message || 'AutoHideHost reported that the command could not be executed.',
+    details: JSON.stringify(hostCommand),
+    action: 'Open Diagnostics and VNC to check whether the save is loaded, the host is the main server, and no blocking menu/event is active.',
+  });
+}
+
+async function sendConfirmedHostCommand(command) {
+  const request = writeHostCommand(command);
+  const observed = await waitForHostCommand(request.id);
+  if (!observed.confirmed) {
+    throwUnconfirmedHostCommand(command, request.id, observed);
+  }
+  if (!observed.hostCommand || observed.hostCommand.success !== true) {
+    throwFailedHostCommand(observed);
+  }
+
+  return {
+    command,
+    commandId: request.id,
+    hostCommand: observed.hostCommand,
+    state: observed.state,
+  };
 }
 
 async function startExpansionInit(req, res) {
   try {
-    const commandAt = Date.now();
-    const result = sendSmapiCommand('autohide_expansion_mode start');
-    const observed = await waitForExpansionState('start', commandAt);
-    if (!observed.confirmed) {
-      throwUnconfirmedExpansionMode('start', observed);
-    }
-
+    const result = await sendConfirmedHostCommand('autohide_expansion_mode start');
     res.json({
       success: true,
       action: 'start-expansion-init',
-      message: 'Expansion mod initialization mode requested. Use VNC to complete the host-side intro event, then hide the host again.',
-      expansionModCompatibility: observed.state.expansionModCompatibility || null,
-      hostHidden: observed.state.hostHidden === true,
-      ...result,
+      message: 'Expansion mod initialization mode confirmed. Use VNC to complete the host-side intro event, then hide the host again.',
+      expansionModCompatibility: result.state.expansionModCompatibility || null,
+      hostHidden: result.state.hostHidden === true,
+      hostCommand: result.hostCommand,
+      commandId: result.commandId,
     });
   } catch (error) {
     return sendError(res, req, error, {
@@ -156,27 +180,22 @@ async function startExpansionInit(req, res) {
       code: 'HOST_EXPANSION_START_FAILED',
       message: 'Failed to start expansion mod initialization mode',
       cause: 'The panel could not ask AutoHideHost to show the host.',
-      action: 'Check that SMAPI is running and AutoHideHost v1.2.9 or newer is loaded.',
+      action: 'Check that SMAPI is running and AutoHideHost v1.3.0 or newer is loaded.',
     });
   }
 }
 
 async function finishExpansionInit(req, res) {
   try {
-    const commandAt = Date.now();
-    const result = sendSmapiCommand('autohide_expansion_mode finish');
-    const observed = await waitForExpansionState('finish', commandAt);
-    if (!observed.confirmed) {
-      throwUnconfirmedExpansionMode('finish', observed);
-    }
-
+    const result = await sendConfirmedHostCommand('autohide_expansion_mode finish');
     res.json({
       success: true,
       action: 'finish-expansion-init',
-      message: 'Host hide command sent. Large mod compatibility remains enabled.',
-      expansionModCompatibility: observed.state.expansionModCompatibility || null,
-      hostHidden: observed.state.hostHidden === true,
-      ...result,
+      message: 'Host hide command confirmed. Large mod compatibility remains enabled.',
+      expansionModCompatibility: result.state.expansionModCompatibility || null,
+      hostHidden: result.state.hostHidden === true,
+      hostCommand: result.hostCommand,
+      commandId: result.commandId,
     });
   } catch (error) {
     return sendError(res, req, error, {
@@ -184,7 +203,7 @@ async function finishExpansionInit(req, res) {
       code: 'HOST_EXPANSION_FINISH_FAILED',
       message: 'Failed to hide host',
       cause: 'The panel could not ask AutoHideHost to hide the host.',
-      action: 'Check that SMAPI is running and AutoHideHost v1.2.9 or newer is loaded.',
+      action: 'Check that SMAPI is running and AutoHideHost v1.3.0 or newer is loaded.',
     });
   }
 }

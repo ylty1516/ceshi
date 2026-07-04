@@ -66,6 +66,12 @@ namespace AutoHideHost
         private string lastFestivalProxyFestivalId = "";
         private DateTime? lastFestivalProxyAt = null;
         private bool manualHostVisible = false;
+        private string lastHostCommandId = "";
+        private string lastHostCommandName = "";
+        private bool lastHostCommandSuccess = false;
+        private string lastHostCommandMessage = "";
+        private DateTime? lastHostCommandAt = null;
+        private string hostCommandControlError = "";
 
         public override void Entry(IModHelper helper)
         {
@@ -332,6 +338,11 @@ namespace AutoHideHost
             if (e.Ticks % Math.Max(15, Config.ManualPausePollTicks) == 0)
             {
                 ApplyManualPauseFlag();
+            }
+
+            if (e.Ticks % Math.Max(15, Config.HostCommandPollTicks) == 0)
+            {
+                ApplyHostCommandFile();
             }
 
             if (e.Ticks % Math.Max(30, Config.GameStateWriteTicks) == 0)
@@ -1028,6 +1039,105 @@ namespace AutoHideHost
             manualPauseLastRequested = requested;
         }
 
+        private string ExtractJsonString(string raw, string key)
+        {
+            if (string.IsNullOrWhiteSpace(raw) || string.IsNullOrWhiteSpace(key))
+                return "";
+
+            var match = Regex.Match(raw, $"\"{Regex.Escape(key)}\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"", RegexOptions.IgnoreCase);
+            if (!match.Success)
+                return "";
+
+            return match.Groups[1].Value
+                .Replace("\\\"", "\"")
+                .Replace("\\\\", "\\")
+                .Replace("\\n", "\n")
+                .Replace("\\r", "\r")
+                .Replace("\\t", "\t");
+        }
+
+        private void SetLastHostCommand(string id, string command, bool success, string message)
+        {
+            lastHostCommandId = id ?? "";
+            lastHostCommandName = command ?? "";
+            lastHostCommandSuccess = success;
+            lastHostCommandMessage = message ?? "";
+            lastHostCommandAt = DateTime.UtcNow;
+            hostCommandControlError = "";
+        }
+
+        private void ExecuteHostCommand(string id, string command)
+        {
+            if (!Context.IsMainPlayer)
+            {
+                SetLastHostCommand(id, command, false, "not_main_player");
+                return;
+            }
+
+            if (!Context.IsWorldReady)
+            {
+                SetLastHostCommand(id, command, false, "world_not_ready");
+                return;
+            }
+
+            string mode = (command ?? "").Trim().ToLowerInvariant();
+            try
+            {
+                if (mode == "autohide_expansion_mode start" || mode == "expansion-start" || mode == "showhost")
+                {
+                    Config.AutoSkipSkippableEvents = false;
+                    this.Helper.WriteConfig(Config);
+                    ShowHost();
+                    SetLastHostCommand(id, command, true, "host_visible_auto_skip_disabled");
+                    this.Monitor.Log("面板命令已执行：显示房主并关闭自动跳过剧情。", LogLevel.Info);
+                    return;
+                }
+
+                if (mode == "autohide_expansion_mode finish" || mode == "expansion-finish" || mode == "hidehost")
+                {
+                    Config.AutoSkipSkippableEvents = false;
+                    this.Helper.WriteConfig(Config);
+                    HideHost();
+                    SetLastHostCommand(id, command, true, "host_hidden_auto_skip_disabled");
+                    this.Monitor.Log("面板命令已执行：重新隐藏房主并保持大型Mod兼容模式。", LogLevel.Info);
+                    return;
+                }
+
+                SetLastHostCommand(id, command, false, "unsupported_command");
+            }
+            catch (Exception ex)
+            {
+                SetLastHostCommand(id, command, false, ex.Message);
+                this.Monitor.Log($"执行面板房主命令失败: {ex.Message}", LogLevel.Error);
+            }
+        }
+
+        private void ApplyHostCommandFile()
+        {
+            try
+            {
+                hostCommandControlError = "";
+                if (string.IsNullOrWhiteSpace(Config.HostCommandFile) || !File.Exists(Config.HostCommandFile))
+                    return;
+
+                string raw = File.ReadAllText(Config.HostCommandFile);
+                string id = ExtractJsonString(raw, "id");
+                string command = ExtractJsonString(raw, "command");
+                if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(command))
+                    return;
+
+                if (id == lastHostCommandId)
+                    return;
+
+                ExecuteHostCommand(id, command);
+            }
+            catch (Exception ex)
+            {
+                hostCommandControlError = ex.Message;
+                this.Monitor.Log($"读取面板房主命令失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
         private void SetLastAutomation(string type, bool success, string message)
         {
             lastAutomationType = type ?? "";
@@ -1185,6 +1295,15 @@ namespace AutoHideHost
                     $"\"manualHostVisible\":{JsonBool(manualHostVisible)}," +
                     $"\"recommendation\":{JsonString(Config.AutoSkipSkippableEvents ? "disable_auto_skip_for_large_content_mods" : "compatible")}" +
                     "}";
+                string hostCommandJson = "{" +
+                    $"\"id\":{JsonString(lastHostCommandId)}," +
+                    $"\"command\":{JsonString(lastHostCommandName)}," +
+                    $"\"success\":{JsonBool(lastHostCommandSuccess)}," +
+                    $"\"message\":{JsonString(lastHostCommandMessage)}," +
+                    $"\"at\":{(lastHostCommandAt.HasValue ? JsonString(lastHostCommandAt.Value.ToString("O")) : "null")}," +
+                    $"\"controlFile\":{JsonString(Config.HostCommandFile ?? "")}," +
+                    $"\"controlError\":{JsonString(hostCommandControlError)}" +
+                    "}";
 
                 var json = new StringBuilder();
                 json.Append("{\n");
@@ -1213,6 +1332,7 @@ namespace AutoHideHost
                 json.Append($"  \"autoPause\": {autoPauseJson},\n");
                 json.Append($"  \"singleFarmhandMenuPause\": {singleFarmhandMenuPauseJson},\n");
                 json.Append($"  \"expansionModCompatibility\": {expansionCompatibilityJson},\n");
+                json.Append($"  \"hostCommand\": {hostCommandJson},\n");
                 json.Append($"  \"onlinePlayers\": [{playersJson}],\n");
                 json.Append($"  \"lastAutomation\": {lastAutomationJson}\n");
                 json.Append("}\n");

@@ -20,6 +20,8 @@
   "ManualPausePollTicks": 60,
   "GameStateFile": "/home/steam/web-panel/data/game-state.json",
   "GameStateWriteTicks": 60,
+  "HostCommandFile": "/home/steam/web-panel/data/host-command.json",
+  "HostCommandPollTicks": 30,
   "EnableFestivalProxyTrigger": true,
   "FestivalProxyCooldownSeconds": 20,
   "AutoSkipSkippableEvents": false
