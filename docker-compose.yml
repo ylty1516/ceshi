@@ -45,6 +45,7 @@ services:
       - ./data/logs:/home/steam/.local/share/puppy-stardew/logs:rw
       - ./data/backups:/home/steam/.local/share/puppy-stardew/backups:rw
       - ./data/panel:/home/steam/web-panel/data:rw
+      - ./data/meta:/home/steam/web-panel/data/meta:rw
 
   stardew-server:
     build: ./docker
@@ -90,10 +91,17 @@ services:
       - AUTO_PAUSE_FILE=${AUTO_PAUSE_FILE:-/home/steam/web-panel/data/auto-pause.json}
       - GAME_STATE_FILE=${GAME_STATE_FILE:-/home/steam/web-panel/data/game-state.json}
       - HOST_COMMAND_FILE=${HOST_COMMAND_FILE:-/home/steam/web-panel/data/host-command.json}
+      - PUPPY_META_DIR=${PUPPY_META_DIR:-/home/steam/web-panel/data/meta}
+      - ORCHESTRATION_STATE_FILE=${ORCHESTRATION_STATE_FILE:-/home/steam/web-panel/data/meta/orchestration-state.json}
+      - MOD_GRAPH_FILE=${MOD_GRAPH_FILE:-/home/steam/web-panel/data/meta/mod_graph.json}
+      - WORLD_FINGERPRINT_FILE=${WORLD_FINGERPRINT_FILE:-/home/steam/web-panel/data/meta/world_fingerprint.json}
+      - STEAM_JSON_SECRET=${STEAM_JSON_SECRET:-/home/steam/secrets/steam.json}
       - MAX_PLAYERS=${MAX_PLAYERS:-8}
       - PANEL_STATUS_CACHE_MS=${PANEL_STATUS_CACHE_MS:-5000}
       - PANEL_STATUS_HISTORY_LIMIT=${PANEL_STATUS_HISTORY_LIMIT:-180}
       - PANEL_STATUS_LOG_TAIL_BYTES=${PANEL_STATUS_LOG_TAIL_BYTES:-131072}
+      - PANEL_WORLD_STATE_CACHE_MS=${PANEL_WORLD_STATE_CACHE_MS:-60000}
+      - PANEL_WORLD_HASH_MODE=${PANEL_WORLD_HASH_MODE:-manifest}
       - PANEL_PLAYER_HISTORY_LIMIT=${PANEL_PLAYER_HISTORY_LIMIT:-144}
       - PANEL_PLAYER_LOG_TAIL_BYTES=${PANEL_PLAYER_LOG_TAIL_BYTES:-131072}
       - PANEL_LOG_TAIL_BYTES=${PANEL_LOG_TAIL_BYTES:-524288}
@@ -174,6 +182,8 @@ services:
       - ./data/logs:/home/steam/.local/share/puppy-stardew/logs:rw
       - ./data/backups:/home/steam/.local/share/puppy-stardew/backups:rw
       - ./data/panel:/home/steam/web-panel/data:rw
+      - ./data/meta:/home/steam/web-panel/data/meta:rw
+      - ./data/secrets:/home/steam/secrets:ro
       # Custom mods volume (OPTIONAL - place your mods here)
       # 自定义模组卷（可选 - 将您的模组放在这里）
       # Supports: mod directories or .zip files

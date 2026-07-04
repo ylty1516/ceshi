@@ -419,6 +419,7 @@ function buildHealth(req = null) {
     checkCommand('tar', 'tar command'),
     checkCommand('gzip', 'gzip command'),
     checkPath(config.DATA_DIR, 'Panel data directory', { writable: true }),
+    checkPath(config.META_DIR, 'Architecture metadata directory', { writable: true }),
     checkPath(config.SAVES_DIR, 'Stardew saves directory', { writable: true, required: false }),
     checkPath(path.join(config.GAME_DIR, 'Mods'), 'Game Mods directory', { writable: true, required: false }),
     checkPath(config.LOG_DIR, 'Panel log directory', { writable: true, required: false }),
@@ -448,6 +449,49 @@ function buildHealth(req = null) {
     status: status.joinability?.joinable ? 'ok' : 'warn',
     detail: status.joinability?.label || status.joinability?.reason || 'Unknown',
     action: status.joinability?.joinable ? '' : (status.joinability?.action || 'Check SMAPI logs and host state.'),
+  });
+
+  const orchestration = status.orchestration || {};
+  const orchestrationBlockers = Array.isArray(orchestration.blockers) ? orchestration.blockers : [];
+  checks.push({
+    id: 'orchestration_state_machine',
+    label: 'Host orchestration state machine',
+    status: orchestration.state === 'RUNNING'
+      ? 'ok'
+      : (['STABILIZING', 'LOADING', 'INIT'].includes(orchestration.state) ? 'warn' : 'error'),
+    detail: `State ${orchestration.state || 'unknown'} / phase ${orchestration.phase || 'unknown'}`,
+    action: orchestrationBlockers.length > 0
+      ? `Resolve blocker(s): ${orchestrationBlockers.join(', ')}.`
+      : (orchestration.state === 'RUNNING' ? '' : 'Wait for startup to finish or inspect SMAPI logs if this state does not advance.'),
+  });
+
+  const worldState = status.worldState || {};
+  const modGraph = worldState.modGraph || {};
+  checks.push({
+    id: 'mod_dependency_graph',
+    label: 'Mod dependency graph',
+    status: modGraph.status === 'valid' ? 'ok' : (modGraph.status ? 'error' : 'warn'),
+    detail: modGraph.status
+      ? `${modGraph.status}: ${modGraph.modCount || 0} mod(s), ${modGraph.missingDependencyCount || 0} missing required dependency/dependencies, ${modGraph.conflictCount || 0} conflict(s).`
+      : 'Mod graph has not been generated yet.',
+    action: modGraph.status === 'valid'
+      ? ''
+      : 'Open the Mods page, install missing dependencies on the server and player clients, or remove duplicate/conflicting mods.',
+  });
+
+  const saveState = worldState.save || {};
+  checks.push({
+    id: 'world_fingerprint',
+    label: 'World fingerprint',
+    status: worldState.available && saveState.status !== 'invalid'
+      ? (worldState.binding?.changed ? 'warn' : 'ok')
+      : 'warn',
+    detail: worldState.available
+      ? `fingerprint ${worldState.fingerprintShort || '--'}; save ${saveState.selectedSave || '--'} (${saveState.status || 'unknown'}); SMAPI ${worldState.smapiVersion || 'unknown'}`
+      : `World state unavailable: ${worldState.error || 'not generated yet'}`,
+    action: worldState.binding?.changed
+      ? 'The observed save/mod/SMAPI fingerprint changed. Make sure a snapshot exists before continuing play after updates or mod changes.'
+      : (saveState.status === 'invalid' ? 'Restore a valid save snapshot or upload a valid Stardew save archive.' : ''),
   });
 
   checks.push(buildLargeContentModCheck(status));
@@ -531,6 +575,9 @@ function exportCrashReport(req, res) {
     copyIfExists(config.SMAPI_LOG, tempRoot, 'SMAPI-latest.txt');
     copyIfExists(config.STATUS_FILE, tempRoot, 'status.json');
     copyIfExists(config.GAME_STATE_FILE, tempRoot, 'game-state.json');
+    copyIfExists(config.MOD_GRAPH_FILE, tempRoot, 'mod_graph.json');
+    copyIfExists(config.WORLD_FINGERPRINT_FILE, tempRoot, 'world_fingerprint.json');
+    copyIfExists(config.ORCHESTRATION_STATE_FILE, tempRoot, 'orchestration-state.json');
     copyIfExists(config.MANUAL_PAUSE_FILE, tempRoot, 'manual-pause.json');
     copyIfExists(config.AUTO_PAUSE_FILE, tempRoot, 'auto-pause.json');
     copyIfExists(path.join(config.LOG_DIR, 'categorized'), tempRoot, 'categorized-logs');

@@ -11,6 +11,9 @@
 - Web 面板内置一键更新按钮，可自动备份关键配置、拉取最新版并重建 Docker 服务
 - Web 面板内置更新日志页面，可直接查看每个版本新增、优化和修复内容
 - 默认按 8 人联机上限显示和写入游戏启动偏好，可通过 `MAX_PLAYERS` 调整
+- 显式编排状态机，区分 `INIT`、`VERIFYING`、`LOADING`、`STABILIZING`、`RUNNING`、`DEGRADED`、`STOPPED`
+- `save + mod_graph + SMAPI` 世界指纹，能持续提示存档、Mod 或 SMAPI 组合是否发生变化
+- 自动生成 `mod_graph.json`，检查 Mod 依赖缺失、重复 UniqueID 和 manifest 解析错误
 - SMAPI 状态桥输出 `game-state.json`，面板可区分“游戏运行”和“联机可加入”
 - 星露谷风格主题界面，支持亮色/暗色模式
 - 日志页支持错误筛选、诊断卡片和准确错误原因提示
@@ -77,6 +80,16 @@ http://你的面板地址:18642/player-mods
 面板在上传或删除 Mod 前会自动创建一份 Mod 快照，包含上传源目录和游戏 `Mods` 目录。管理员可以在“模组”页面查看、下载或回滚这些备份。回滚前面板会再次创建一份 `pre-rollback` 安全备份，避免误操作后没有退路。
 
 “诊断”页面会检查 `zip`、`unzip`、`tar`、`gzip`、目录权限、SMAPI 状态桥、联机可加入状态和最近日志诊断。遇到崩溃时可以点击“导出崩溃报告”，报告会打包健康检查、Mod 校验清单、SMAPI 日志、状态桥和暂停控制文件，方便排查问题。
+
+## 架构 V2 状态模型
+
+新版会把面板运行状态拆成明确的元数据文件，默认写在 `data/meta/`：
+
+- `orchestration-state.json`：启动脚本写入当前阶段，例如校验 Steam 凭证、下载游戏、安装 SMAPI、同步 Mod、启动显示环境和启动游戏。
+- `mod_graph.json`：面板根据已安装 Mod 的 `manifest.json` 生成依赖图，记录版本、依赖、缺失依赖、重复 ID 和解析错误。
+- `world_fingerprint.json`：把当前选中存档、Mod 依赖图和 SMAPI 版本合成世界指纹。第一次生成会成为基线；后续如果存档、Mod 或 SMAPI 组合变化，仪表盘和诊断页会持续提示“世界指纹变化”，直到管理员确认备份和兼容性后在仪表盘点击“接受基线”。
+
+默认 `PANEL_WORLD_HASH_MODE=manifest` 只锁定 manifest、版本和依赖关系，适合 2 核 2G 小服务器；如果你要做完整目录级校验，可以在 `.env` 中设置 `PANEL_WORLD_HASH_MODE=full`，但大型 Mod 多时会明显增加读盘和 CPU 压力。
 
 ## 自动空服暂停
 
@@ -337,13 +350,13 @@ cd /你的项目目录 && (curl -fsSL https://gh.sixyin.com/https://raw.githubus
 
 `模组` 页面提供 `清空上传Mod` 按钮。它会删除 `data/custom-mods/` 里的全部上传文件和 `data/game/Mods/` 里的非内置自定义 Mod，并自动重建玩家 Mod 下载包；`AutoHideHost`、`ServerAutoLoad`、`AlwaysOnServer`、`SkillLevelGuard` 等内置服务端 Mod 会保留。执行前会创建 Mod 回滚备份，重启服务器后完全生效。
 
-`配置` 页面提供 `出厂化重置游戏` 按钮。它会要求输入 `RESET` 确认，然后由 `stardew-manager` 启动独立任务执行：备份存档、上传 Mod 和关键配置，停止游戏容器，清空 `data/saves`、`data/game`、`data/custom-mods`、`data/logs`、玩家 Mod 下载包和运行控制文件，再重新创建服务器。
+`配置` 页面提供 `出厂化重置游戏` 按钮。它会要求输入 `RESET` 确认，然后由 `stardew-manager` 启动独立任务执行：备份存档、上传 Mod、`data/meta` 和关键配置，停止游戏容器，清空 `data/saves`、`data/game`、`data/custom-mods`、`data/logs`、`data/meta`、玩家 Mod 下载包和运行控制文件，再重新创建服务器。
 
-出厂化重置会保留项目源码、`.env`、面板登录数据、`data/steam`、`data/backups` 和 `secrets/`。因为 `data/game` 会被清空，下一次启动会重新下载/校验 Stardew Valley 并安装内置 Mod，耗时取决于服务器网络和 Steam 下载速度。
+出厂化重置会保留项目源码、`.env`、面板登录数据、`data/steam`、`data/backups` 和 `data/secrets/`。因为 `data/game` 会被清空，下一次启动会重新下载/校验 Stardew Valley 并安装内置 Mod，耗时取决于服务器网络和 Steam 下载速度。
 
 ## 2核2G 小服务器优化
 
-这个项目运行的是真实 Stardew Valley + SMAPI 客户端，所以主要资源占用来自游戏本体、Xvfb/VNC、Steam 和已安装 Mod。面板这边已经按 2核2G 做了轻量默认值：状态接口 5 秒缓存、在线人数仍按 20 秒刷新、日志只读尾部、Mod 公共清单 2 分钟缓存、健康检查命令 1.5 秒超时，并限制内存里的历史记录长度。
+这个项目运行的是真实 Stardew Valley + SMAPI 客户端，所以主要资源占用来自游戏本体、Xvfb/VNC、Steam 和已安装 Mod。面板这边已经按 2核2G 做了轻量默认值：状态接口 5 秒缓存、在线人数仍按 20 秒刷新、世界状态 60 秒缓存、默认只做 Mod manifest 级指纹、日志只读尾部、Mod 公共清单 2 分钟缓存、健康检查命令 1.5 秒超时，并限制内存里的历史记录长度。
 
 如果你的服务器压力比较大，建议在 `.env` 中启用或确认这些配置：
 
@@ -371,6 +384,7 @@ PANEL_COMMAND_TIMEOUT_MS=1500
 - `ENABLE_VNC=false` 适合存档已经创建好、平时不需要远程画面的服务器，可减少一部分内存占用；需要首次设置、Steam Guard 或手动进游戏时再临时打开。
 - `LOW_PERF_MODE=true` 和 `TARGET_FPS=30` 会降低画面渲染压力，更适合 2核2G。
 - `PANEL_*_TAIL_BYTES` 控制面板读取日志尾部的大小，避免每次刷新都扫完整大日志。
+- `PANEL_WORLD_HASH_MODE=manifest` 避免频繁遍历大型 Mod 目录；只有排查文件级不一致时才建议临时改成 `full`。
 - `PANEL_PUBLIC_MOD_MANIFEST_CACHE_MS` 控制玩家 Mod 校验清单缓存时间，避免公开下载页频繁重新计算 SHA256。
 - 这些配置只影响 Web 面板和辅助脚本，不会把游戏服务器变成空壳；玩家连接仍然依赖真实 SMAPI 游戏进程。
 

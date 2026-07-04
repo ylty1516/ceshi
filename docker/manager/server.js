@@ -460,14 +460,17 @@ export PWD="$PROJECT_DIR"
 set_phase "backup" "备份关键配置和存档"
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR" 2>/dev/null || true
-for file in .env docker-compose.yml docker/config/startup_preferences; do
+for file in .env docker-compose.yml docker/config/startup_preferences data/meta/world_fingerprint.json data/meta/mod_graph.json; do
   if [ -f "$file" ]; then
     mkdir -p "$BACKUP_DIR/$(dirname "$file")"
     cp -a "$file" "$BACKUP_DIR/$file"
   fi
 done
 if [ "$SKIP_SAVE_BACKUP" != "true" ] && [ -d data/saves ]; then
-  tar -czf "$BACKUP_DIR/saves.tar.gz" data/saves || true
+  if ! tar -czf "$BACKUP_DIR/saves.tar.gz" data/saves; then
+    echo "Save backup failed. Update is blocked to keep the server recoverable. Set PUPPY_UPDATE_SKIP_SAVE_BACKUP=true only if you intentionally accept this risk."
+    exit 24
+  fi
 fi
 
 download_file() {
@@ -535,7 +538,7 @@ if ! grep -q '^MAX_PLAYERS=' .env 2>/dev/null; then
   printf '\\n# 联机人数上限，默认 8 人\\nMAX_PLAYERS=8\\n' >> .env
 fi
 chmod +x ./*.sh 2>/dev/null || true
-mkdir -p data/saves data/game data/steam data/logs data/backups data/custom-mods data/panel
+mkdir -p data/saves data/game data/steam data/logs data/backups data/custom-mods data/panel data/meta data/secrets
 
 set_phase "rebuild" "重建并重启 Docker 服务"
 if [ "$NO_BUILD" != "true" ]; then
@@ -608,7 +611,7 @@ trap on_exit EXIT
 safe_clean_dir() {
   dir="$1"
   case "$dir" in
-    "$PROJECT_DIR"/data/saves|"$PROJECT_DIR"/data/game|"$PROJECT_DIR"/data/custom-mods|"$PROJECT_DIR"/data/logs)
+    "$PROJECT_DIR"/data/saves|"$PROJECT_DIR"/data/game|"$PROJECT_DIR"/data/custom-mods|"$PROJECT_DIR"/data/logs|"$PROJECT_DIR"/data/meta)
       mkdir -p "$dir"
       find "$dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
       ;;
@@ -639,6 +642,7 @@ mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR" 2>/dev/null || true
 backup_path "data/saves" "saves"
 backup_path "data/custom-mods" "custom-mods"
+backup_path "data/meta" "meta"
 if [ -d "$PROJECT_DIR/data/game/Mods" ]; then
   tar -czf "$BACKUP_DIR/game-mods.tar.gz" -C "$PROJECT_DIR/data/game" "Mods"
 fi
@@ -652,8 +656,8 @@ cat > "$BACKUP_DIR/factory-reset.json" <<JSON
 {
   "createdAt": "$STARTED_AT",
   "projectDir": "$(json_escape "$PROJECT_DIR")",
-  "preserved": ["project source", ".env", "data/panel", "data/steam", "data/backups"],
-  "cleared": ["data/saves", "data/game", "data/custom-mods", "data/logs", "data/panel/client-packs", "runtime control files"]
+  "preserved": ["project source", ".env", "data/panel/auth.json", "data/steam", "data/backups", "data/secrets"],
+  "cleared": ["data/saves", "data/game", "data/custom-mods", "data/logs", "data/meta", "data/panel/client-packs", "runtime control files"]
 }
 JSON
 
@@ -662,19 +666,20 @@ docker compose -f "$COMPOSE_FILE" --project-directory "$PROJECT_DIR" stop starde
 docker rm -f puppy-stardew puppy-stardew-init >/dev/null 2>&1 || true
 
 set_phase "reset" "清理游戏运行数据"
-mkdir -p data/saves data/game data/custom-mods data/logs data/backups data/panel data/steam
+mkdir -p data/saves data/game data/custom-mods data/logs data/backups data/panel data/meta data/steam
 safe_clean_dir "$PROJECT_DIR/data/saves"
 safe_clean_dir "$PROJECT_DIR/data/game"
 safe_clean_dir "$PROJECT_DIR/data/custom-mods"
 safe_clean_dir "$PROJECT_DIR/data/logs"
+safe_clean_dir "$PROJECT_DIR/data/meta"
 rm -rf "$PROJECT_DIR/data/panel/client-packs"
 rm -f "$PROJECT_DIR/data/panel/game-state.json" \\
       "$PROJECT_DIR/data/panel/manual-pause.json" \\
       "$PROJECT_DIR/data/panel/auto-pause.json" \\
       "$PROJECT_DIR/data/panel/host-command.json" \\
       "$PROJECT_DIR/data/panel/status.json"
-mkdir -p data/saves data/game data/custom-mods data/logs data/backups data/panel data/steam
-chown -R 1000:1000 data/saves data/game data/custom-mods data/logs data/panel 2>/dev/null || true
+mkdir -p data/saves data/game data/custom-mods data/logs data/backups data/panel data/meta data/steam
+chown -R 1000:1000 data/saves data/game data/custom-mods data/logs data/panel data/meta 2>/dev/null || true
 
 set_phase "restart" "重新创建并启动服务器"
 docker compose -f "$COMPOSE_FILE" --project-directory "$PROJECT_DIR" up -d --build --force-recreate stardew-server

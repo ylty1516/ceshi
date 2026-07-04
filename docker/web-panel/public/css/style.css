@@ -403,6 +403,15 @@ textarea {
   line-height: 1.4;
 }
 
+.detail-action {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.detail-action[hidden] {
+  display: none;
+}
+
 .detail-stats {
   display: flex;
   gap: 16px;

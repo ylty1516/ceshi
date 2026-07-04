@@ -115,7 +115,7 @@ create_backup() {
   mkdir -p "$BACKUP_DIR"
   chmod 700 "$BACKUP_DIR" 2>/dev/null || true
 
-  for file in ".env" "docker-compose.yml" "docker/config/startup_preferences"; do
+  for file in ".env" "docker-compose.yml" "docker/config/startup_preferences" "data/meta/world_fingerprint.json" "data/meta/mod_graph.json"; do
     if [ -f "$PROJECT_DIR/$file" ]; then
       mkdir -p "$BACKUP_DIR/$(dirname "$file")"
       cp -a "$PROJECT_DIR/$file" "$BACKUP_DIR/$file"
@@ -126,7 +126,7 @@ create_backup() {
     if tar -czf "$BACKUP_DIR/saves.tar.gz" -C "$PROJECT_DIR" data/saves 2>/dev/null; then
       info "已备份存档到 $BACKUP_DIR/saves.tar.gz"
     else
-      warn "存档备份失败，但不会继续改动存档目录。"
+      die "存档备份失败，为保证可恢复性，已停止更新。如确认跳过存档备份，设置 PUPPY_UPDATE_SKIP_SAVE_BACKUP=true"
     fi
   fi
 
@@ -205,7 +205,7 @@ ensure_runtime_files() {
   fi
 
   chmod +x ./*.sh 2>/dev/null || true
-  mkdir -p data/{saves,game,steam,logs,backups,custom-mods,panel}
+  mkdir -p data/{saves,game,steam,logs,backups,custom-mods,panel,meta,secrets}
 
   game_uid="$(stat -c '%u' data/game 2>/dev/null || stat -f '%u' data/game 2>/dev/null || printf '')"
   if [ "$game_uid" != "1000" ]; then

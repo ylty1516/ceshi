@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-05 架构 V2 基础改造
+### New Features
+- 新增世界状态模型：根据当前存档、Mod 依赖图和 SMAPI 版本生成 `world_fingerprint.json`，用于判断世界组合是否发生变化。
+- 新增 `mod_graph.json`，自动记录 Mod manifest、版本、依赖关系、缺失依赖、重复 UniqueID 和解析错误。
+- 新增显式编排状态文件 `orchestration-state.json`，启动脚本会写出校验、下载、安装、同步、启动等阶段，面板和诊断报告可直接显示。
+- 新增 `/api/world` 和 `/api/world/accept` 接口，可查看当前世界状态，并在确认备份后接受新的世界指纹基线。
+- 仪表盘世界指纹卡会在检测到变化时显示“接受基线”按钮，点击后会真正写入新的 accepted fingerprint。
+
+### Improvements
+- 世界状态默认使用 manifest 级指纹，避免 2 核 2G 服务器频繁遍历大型 Mod 资产目录；需要完整目录校验时可设置 `PANEL_WORLD_HASH_MODE=full`。
+- 出厂化重置会备份并清空 `data/meta`，避免重置后继续使用旧的世界指纹和编排状态。
+- 初始化容器会创建并修正 `data/meta` 权限，减少首次启动时的元数据写入失败。
+- 诊断页新增架构元数据目录、编排状态、Mod 依赖图和世界指纹检查，崩溃报告会打包这些元数据。
+- Steam 凭证支持 `data/secrets/steam.json`，减少把明文密码写进 `.env` 的需求。
+
+### Bug Fixes
+- 启动阶段遇到 Steam 凭证缺失、游戏下载失败或 SMAPI 安装失败时，会写入明确的 `STOPPED` 阶段和失败原因。
+
 ## 2026-07-05 大型 Mod 事件代理
 ### New Features
 - AutoHideHost v1.4.0 新增“玩家事件代理”：真实玩家进入地点时，隐藏房主会临时进入同地点检查房主侧剧情事件，减少 Ridgeside Village、Stardew Valley Expanded、East Scarp 等大型内容 Mod 需要人工远程干预的问题。

@@ -27,9 +27,9 @@ fi
 echo ""
 echo "Creating data directories..."
 echo "创建数据目录..."
-mkdir -p data/{saves,game,steam,logs,backups,custom-mods,panel}
-echo "✓ Directories created: data/saves, data/game, data/steam, data/logs, data/backups, data/custom-mods, data/panel"
-echo "✓ 目录已创建: data/saves, data/game, data/steam, data/logs, data/backups, data/custom-mods, data/panel"
+mkdir -p data/{saves,game,steam,logs,backups,custom-mods,panel,meta,secrets}
+echo "✓ Directories created: data/saves, data/game, data/steam, data/logs, data/backups, data/custom-mods, data/panel, data/meta, data/secrets"
+echo "✓ 目录已创建: data/saves, data/game, data/steam, data/logs, data/backups, data/custom-mods, data/panel, data/meta, data/secrets"
 
 # Fix permissions (UID 1000 is the steam user inside container)
 echo ""

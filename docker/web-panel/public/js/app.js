@@ -77,7 +77,7 @@ const translations = {
     'dash.gameDay': '游戏日期', 'dash.backups': '备份数量', 'dash.mods': '已加载Mod',
     'dash.resources': '系统资源', 'dash.quickActions': '快捷操作',
     'dash.details': '服务器详情', 'dash.joinIp': '联机 IP', 'dash.joinPort': '联机端口',
-    'dash.joinable': '可加入状态', 'dash.connectionFreshness': '人数刷新', 'dash.modRuntime': 'Mod 生效状态', 'dash.eventProxy': '玩家事件代理', 'dash.autoPause': '自动暂停', 'dash.timePause': '游戏时间状态', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
+    'dash.joinable': '可加入状态', 'dash.connectionFreshness': '人数刷新', 'dash.modRuntime': 'Mod 生效状态', 'dash.orchestration': '编排状态', 'dash.worldFingerprint': '世界指纹', 'dash.eventProxy': '玩家事件代理', 'dash.autoPause': '自动暂停', 'dash.timePause': '游戏时间状态', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
     'dash.metricsPort': '监控端口', 'dash.events': '自动化事件',
     'dash.passout': '昏倒处理', 'dash.readyCheck': '准备检查', 'dash.offlineEvents': '离线恢复',
     'dash.joinHint': '游戏内通常只需要输入 IP 地址。', 'dash.portHint': '星露谷联机输入框里不要追加端口号。',
@@ -104,6 +104,17 @@ const translations = {
     'mod.reason.unknown': '无法确认 Mod 状态。',
     'mod.age': '更新于 {seconds} 秒前', 'mod.lastAutomation': '最近自动化 {type}（{result}）',
     'mod.success': '成功', 'mod.failed': '失败', 'mod.hostHidden': '房主已隐藏',
+    'orch.state.INIT': '初始化', 'orch.state.VERIFYING': '校验中',
+    'orch.state.LOADING': '载入中', 'orch.state.STABILIZING': '稳定中',
+    'orch.state.RUNNING': '运行中', 'orch.state.DEGRADED': '降级',
+    'orch.state.RECOVERING': '恢复中', 'orch.state.STOPPED': '已停止',
+    'orch.note': '阶段：{phase}',
+    'orch.blockers': '阻塞：{blockers}',
+    'world.note': 'Mod {mods} 个，存档 {save}，SMAPI {smapi}',
+    'world.changed': '指纹变化，更新或换 Mod 后请确认已有快照。',
+    'world.unavailable': '世界指纹暂不可用。',
+    'world.accept': '接受基线',
+    'world.acceptConfirm': '确认已经备份，并把当前存档、Mod 和 SMAPI 组合设为新的世界指纹基线吗？',
     'eventProxy.state.idle': '等待玩家', 'eventProxy.state.disabled': '已关闭',
     'eventProxy.state.blocked': '被阻止', 'eventProxy.state.warping': '代理进图',
     'eventProxy.state.checking': '检查事件', 'eventProxy.state.event_active': '事件进行中',
@@ -322,6 +333,8 @@ const translations = {
     'toast.autoPauseOn': '已开启自动空服暂停。',
     'toast.autoPauseOff': '已关闭自动空服暂停，若此前由自动暂停冻结会自动恢复。',
     'toast.autoPauseFail': '切换自动暂停失败',
+    'toast.worldAcceptOk': '已接受当前世界指纹基线。',
+    'toast.worldAcceptFail': '接受世界指纹基线失败',
     'toast.expansionInitOk': '已显示服务器房主并关闭自动跳过剧情。正常情况下优先使用玩家事件代理；此按钮只用于手动排障。',
     'toast.expansionInitFail': '大型Mod初始化启动失败',
     'toast.hideHostOk': '已发送重新隐藏房主命令。',
@@ -343,7 +356,7 @@ const translations = {
     'dash.gameDay': 'Game Day', 'dash.backups': 'Backups', 'dash.mods': 'Loaded Mods',
     'dash.resources': 'System Resources', 'dash.quickActions': 'Quick Actions',
     'dash.details': 'Server Details', 'dash.joinIp': 'Join IP', 'dash.joinPort': 'Join Port',
-    'dash.joinable': 'Joinable', 'dash.connectionFreshness': 'Player Refresh', 'dash.modRuntime': 'Mod Runtime', 'dash.eventProxy': 'Player Event Proxy', 'dash.autoPause': 'Auto Pause', 'dash.timePause': 'Time State', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
+    'dash.joinable': 'Joinable', 'dash.connectionFreshness': 'Player Refresh', 'dash.modRuntime': 'Mod Runtime', 'dash.orchestration': 'Orchestration', 'dash.worldFingerprint': 'World Fingerprint', 'dash.eventProxy': 'Player Event Proxy', 'dash.autoPause': 'Auto Pause', 'dash.timePause': 'Time State', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
     'dash.metricsPort': 'Metrics Port', 'dash.events': 'Automation Events',
     'dash.passout': 'Passout', 'dash.readyCheck': 'Ready Check', 'dash.offlineEvents': 'Offline Recovery',
     'dash.joinHint': 'In-game usually only needs the IP address.', 'dash.portHint': 'Do not append the port in Stardew\'s join field.',
@@ -370,6 +383,17 @@ const translations = {
     'mod.reason.unknown': 'The mod runtime state cannot be confirmed.',
     'mod.age': 'updated {seconds}s ago', 'mod.lastAutomation': 'last automation {type} ({result})',
     'mod.success': 'success', 'mod.failed': 'failed', 'mod.hostHidden': 'host hidden',
+    'orch.state.INIT': 'Init', 'orch.state.VERIFYING': 'Verifying',
+    'orch.state.LOADING': 'Loading', 'orch.state.STABILIZING': 'Stabilizing',
+    'orch.state.RUNNING': 'Running', 'orch.state.DEGRADED': 'Degraded',
+    'orch.state.RECOVERING': 'Recovering', 'orch.state.STOPPED': 'Stopped',
+    'orch.note': 'Phase: {phase}',
+    'orch.blockers': 'Blockers: {blockers}',
+    'world.note': '{mods} mod(s), save {save}, SMAPI {smapi}',
+    'world.changed': 'Fingerprint changed; confirm a snapshot exists after updates or mod changes.',
+    'world.unavailable': 'World fingerprint is unavailable.',
+    'world.accept': 'Accept Baseline',
+    'world.acceptConfirm': 'Confirm that a backup exists and accept the current save, mod and SMAPI combination as the new world fingerprint baseline?',
     'eventProxy.state.idle': 'Waiting', 'eventProxy.state.disabled': 'Disabled',
     'eventProxy.state.blocked': 'Blocked', 'eventProxy.state.warping': 'Proxy warp',
     'eventProxy.state.checking': 'Checking', 'eventProxy.state.event_active': 'Event active',
@@ -588,6 +612,8 @@ const translations = {
     'toast.autoPauseOn': 'Automatic empty-server pause enabled.',
     'toast.autoPauseOff': 'Automatic empty-server pause disabled. An auto-held pause will be released.',
     'toast.autoPauseFail': 'Failed to toggle auto pause',
+    'toast.worldAcceptOk': 'World fingerprint baseline accepted.',
+    'toast.worldAcceptFail': 'Failed to accept world fingerprint baseline',
     'toast.expansionInitOk': 'Host is visible and automatic event skipping is disabled. Prefer the player event proxy for normal large mod events; use this only for manual troubleshooting.',
     'toast.expansionInitFail': 'Failed to start large mod initialization',
     'toast.hideHostOk': 'Hide-host command sent.',
@@ -709,6 +735,11 @@ function init() {
     localStorage.setItem('panel_theme', currentTheme);
     applyTheme();
   };
+
+  const acceptWorldFingerprintBtn = document.getElementById('acceptWorldFingerprintBtn');
+  if (acceptWorldFingerprintBtn) {
+    acceptWorldFingerprintBtn.onclick = acceptWorldFingerprint;
+  }
 
   // Mobile menu toggle
   document.getElementById('menuToggle').onclick = () => {
@@ -995,6 +1026,8 @@ function updateDashboardUI(data) {
   updateJoinabilityUI(data.joinability || { joinable: false, reason: 'unknown' });
   updateConnectionFreshnessUI(data.connection || {});
   updateModRuntimeUI(data.modRuntime || { active: false, state: 'unknown' });
+  updateOrchestrationUI(data.orchestration || { state: 'INIT', phase: 'initializing', blockers: [] });
+  updateWorldFingerprintUI(data.worldState || { available: false });
   updateEventProxyUI(data.eventProxy || { enabled: false, state: 'unknown' });
   updateAutoPauseUI(data.autoPause || { enabled: false, state: 'unknown' });
   updateTimePauseUI(data.timePause || { paused: data.paused === true, source: data.paused ? 'inferred' : 'running' });
@@ -1074,6 +1107,94 @@ function updateModRuntimeUI(modRuntime) {
       parts.push(t('mod.hostHidden'));
     }
     note.textContent = parts.filter(Boolean).join(' | ');
+  }
+}
+
+function updateOrchestrationUI(orchestration) {
+  const value = document.getElementById('detail-orchestration');
+  const note = document.getElementById('detail-orchestration-note');
+  const state = orchestration?.state || 'INIT';
+  const blockers = Array.isArray(orchestration?.blockers) ? orchestration.blockers : [];
+  const stateKey = `orch.state.${state}`;
+  const stateLabel = t(stateKey) === stateKey ? state : t(stateKey);
+
+  if (value) {
+    value.textContent = stateLabel;
+    setTone(value, state === 'RUNNING' ? 'ok' : (state === 'DEGRADED' || state === 'STOPPED' ? 'error' : 'warn'));
+  }
+
+  if (note) {
+    const parts = [tf('orch.note', { phase: orchestration?.phase || '--' })];
+    if (blockers.length > 0) {
+      parts.push(tf('orch.blockers', { blockers: blockers.join(', ') }));
+    }
+    note.textContent = parts.join(' | ');
+  }
+}
+
+function updateWorldFingerprintUI(worldState) {
+  const value = document.getElementById('detail-world-fingerprint');
+  const note = document.getElementById('detail-world-fingerprint-note');
+  const button = document.getElementById('acceptWorldFingerprintBtn');
+  const available = worldState && worldState.available === true;
+  const changed = worldState?.binding?.changed === true;
+  const fingerprint = worldState?.fingerprintShort || (worldState?.fingerprint ? String(worldState.fingerprint).slice(0, 12) : '');
+
+  if (button) {
+    button.hidden = !available || !changed;
+    button.disabled = false;
+  }
+
+  if (value) {
+    value.textContent = available ? (fingerprint || '--') : '--';
+    setTone(value, !available ? 'warn' : changed ? 'warn' : 'ok');
+  }
+
+  if (note) {
+    if (!available) {
+      note.textContent = worldState?.error || t('world.unavailable');
+      return;
+    }
+
+    const modCount = worldState?.modGraph?.modCount || 0;
+    const selectedSave = worldState?.save?.selectedSave || '--';
+    const smapiVersion = worldState?.smapiVersion || 'unknown';
+    const parts = [tf('world.note', {
+      mods: String(modCount),
+      save: selectedSave,
+      smapi: smapiVersion,
+    })];
+    if (changed) {
+      parts.push(t('world.changed'));
+    }
+    note.textContent = parts.join(' | ');
+  }
+}
+
+async function acceptWorldFingerprint() {
+  if (!confirm(t('world.acceptConfirm'))) {
+    return;
+  }
+
+  const button = document.getElementById('acceptWorldFingerprintBtn');
+  if (button) button.disabled = true;
+
+  try {
+    const data = await API.post('/api/world/accept', {});
+    if (data && data.success) {
+      showToast(t('toast.worldAcceptOk'), 'success');
+      if (data.worldState) {
+        updateWorldFingerprintUI(data.worldState);
+      }
+      loadDashboard();
+      return;
+    }
+
+    showToast(formatApiError(data, t('toast.worldAcceptFail')), 'error', 7000);
+  } catch (error) {
+    showToast(formatApiError({ error: error.message }, t('toast.worldAcceptFail')), 'error', 7000);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 

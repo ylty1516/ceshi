@@ -14,6 +14,9 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 PANEL_ENV_FILE=${ENV_FILE:-/home/steam/web-panel/data/runtime.env}
+PUPPY_META_DIR=${PUPPY_META_DIR:-/home/steam/web-panel/data/meta}
+ORCHESTRATION_STATE_FILE=${ORCHESTRATION_STATE_FILE:-$PUPPY_META_DIR/orchestration-state.json}
+STEAM_JSON_SECRET=${STEAM_JSON_SECRET:-/home/steam/secrets/steam.json}
 
 if [ ! -f "$PANEL_ENV_FILE" ] && [ -f "/home/steam/.env" ]; then
     PANEL_ENV_FILE="/home/steam/.env"
@@ -83,6 +86,39 @@ log_step() {
 
 log_steam() {
     echo -e "${CYAN}$1${NC}"
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+write_orchestration_state() {
+    local state=$1
+    local phase=$2
+    local message=${3:-}
+    local now
+
+    now=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    mkdir -p "$(dirname "$ORCHESTRATION_STATE_FILE")" 2>/dev/null || return 0
+    cat > "$ORCHESTRATION_STATE_FILE" <<JSON
+{
+  "state": "$(json_escape "$state")",
+  "phase": "$(json_escape "$phase")",
+  "message": "$(json_escape "$message")",
+  "updatedAt": "$now",
+  "source": "entrypoint"
+}
+JSON
+}
+
+fail_startup() {
+    local phase=$1
+    local message=$2
+    local code=${3:-1}
+
+    write_orchestration_state "STOPPED" "$phase" "$message"
+    log_error "$message"
+    exit "$code"
 }
 
 get_mod_manifest_version() {
@@ -435,8 +471,10 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p /home/steam/.local/share/puppy-stardew \
              /home/steam/.local/share/puppy-stardew/logs \
              /home/steam/.local/share/puppy-stardew/backups \
-             /home/steam/web-panel/data
+             /home/steam/web-panel/data \
+             "$PUPPY_META_DIR"
     chown -R 1000:1000 /home/steam/.local/share/puppy-stardew /home/steam/web-panel/data 2>/dev/null || true
+    write_orchestration_state "INIT" "root_initialization" "Root phase completed; switching to steam user."
 
     log_info "Switching to steam user..."
 
@@ -467,6 +505,38 @@ log_step "Step 1: Validating configuration..."
 
 # Docker Secrets support: read from /run/secrets/ if env vars are empty
 # Docker Secrets 支持：如果环境变量为空，从 /run/secrets/ 读取
+write_orchestration_state "VERIFYING" "steam_credentials" "Validating Steam credentials and secret sources."
+
+if { [ -z "$STEAM_USERNAME" ] || [ -z "$STEAM_PASSWORD" ]; } && [ -f "$STEAM_JSON_SECRET" ]; then
+    parsed_secret=$(node -e '
+const fs = require("fs");
+try {
+  const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const username = data.username || data.STEAM_USERNAME || data.steamUsername || "";
+  const password = data.password || data.STEAM_PASSWORD || data.steamPassword || "";
+  if (username) console.log(`STEAM_USERNAME=${username}`);
+  if (password) console.log(`STEAM_PASSWORD=${password}`);
+} catch (error) {
+  process.exit(2);
+}
+' "$STEAM_JSON_SECRET" 2>/dev/null || true)
+    while IFS='=' read -r key value; do
+        case "$key" in
+            STEAM_USERNAME)
+                [ -z "$STEAM_USERNAME" ] && STEAM_USERNAME="$value"
+                ;;
+            STEAM_PASSWORD)
+                [ -z "$STEAM_PASSWORD" ] && STEAM_PASSWORD="$value"
+                ;;
+        esac
+    done <<EOF
+$parsed_secret
+EOF
+    if [ -n "$parsed_secret" ]; then
+        log_info "Steam credentials loaded from JSON secret"
+    fi
+fi
+
 if [ -z "$STEAM_USERNAME" ] && [ -f "/run/secrets/steam_username" ]; then
     STEAM_USERNAME=$(cat /run/secrets/steam_username | tr -d '\n')
     log_info "Steam username loaded from Docker Secret"
@@ -481,13 +551,14 @@ if [ -z "$STEAM_USERNAME" ] || [ -z "$STEAM_PASSWORD" ]; then
     log_error "STEAM_USERNAME 或 STEAM_PASSWORD 未设置！"
     log_error "Set via .env file or Docker Secrets."
     log_error "通过 .env 文件或 Docker Secrets 设置。"
-    exit 1
+    fail_startup "steam_credentials_missing" "Steam credentials are missing. Set .env, Docker Secrets or /home/steam/secrets/steam.json." 1
 fi
 
-log_info "Steam username: $STEAM_USERNAME"
+log_info "Steam credentials configured"
 
 # Step 2: Download game if needed
 if [ ! -f "/home/steam/stardewvalley/StardewValley" ]; then
+    write_orchestration_state "LOADING" "game_download" "Stardew Valley files are missing; downloading through SteamCMD."
     log_step "Step 2: Downloading Stardew Valley..."
     log_warn "Game files not found. Downloading from Steam..."
     log_warn "未找到游戏文件。正在从 Steam 下载..."
@@ -505,9 +576,10 @@ if [ ! -f "/home/steam/stardewvalley/StardewValley" ]; then
     if ! download_game_via_steam; then
         log_error "Failed to download game. Container will exit."
         log_error "游戏下载失败。容器将退出。"
-        exit 1
+        fail_startup "game_download_failed" "Stardew Valley download failed. Check Steam Guard, Steam credentials, network and disk space." 1
     fi
 else
+    write_orchestration_state "VERIFYING" "game_files_present" "Stardew Valley files found."
     log_step "Step 2: Game files found, skipping download"
     log_info "✓ Stardew Valley already downloaded"
     log_info "✓ 星露谷物语已下载"
@@ -515,6 +587,7 @@ fi
 
 # Step 3: Install SMAPI
 log_step "Step 3: Installing SMAPI mod loader..."
+write_orchestration_state "VERIFYING" "smapi_install" "Checking SMAPI installation."
 
 if [ ! -f "/home/steam/stardewvalley/StardewModdingAPI" ]; then
     log_info "Installing SMAPI..."
@@ -524,7 +597,7 @@ if [ ! -f "/home/steam/stardewvalley/StardewModdingAPI" ]; then
     if [ $? -ne 0 ]; then
         log_error "Failed to install SMAPI!"
         log_error "SMAPI 安装失败！"
-        exit 1
+        fail_startup "smapi_install_failed" "SMAPI installation failed. Check the downloaded game files and SMAPI installer directory." 1
     fi
 
     log_info "✓ SMAPI installed successfully!"
@@ -534,6 +607,7 @@ fi
 
 # Step 4: Install mods
 log_step "Step 4: Installing mods..."
+write_orchestration_state "VERIFYING" "mod_install" "Synchronizing bundled and custom mods."
 
 mkdir -p /home/steam/stardewvalley/Mods
 
@@ -576,6 +650,7 @@ fi
 
 # Step 5: Setup virtual display
 log_step "Step 5: Starting virtual display..."
+write_orchestration_state "STABILIZING" "display_start" "Starting virtual display."
 
 # Check if Xorg is already running from root phase
 START_XVFB_FALLBACK=false
@@ -709,6 +784,7 @@ fi
 # Step 8: Start log monitoring (optional)
 if [ "$ENABLE_LOG_MONITOR" = "true" ]; then
     log_step "Step 8: Starting log monitoring..."
+    write_orchestration_state "STABILIZING" "log_monitor" "Starting log monitor."
 
     if [ -f "/home/steam/scripts/log-monitor.sh" ]; then
         /home/steam/scripts/log-monitor.sh &
@@ -720,6 +796,7 @@ fi
 
 # Step 9: Start game server
 log_step "Step 9: Starting game server..."
+write_orchestration_state "STABILIZING" "game_launch" "Launching StardewModdingAPI host process."
 log_info "================================================"
 log_info "  Server is starting!"
 log_info "  服务器启动中！"

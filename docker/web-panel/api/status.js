@@ -9,6 +9,7 @@ const https = require('https');
 const config = require('../server');
 const { AppError, commandError, sendError } = require('../errors');
 const { MAX_PLAYERS, getVisiblePlayers, readGameStateBridge } = require('./game-state');
+const { buildWorldState, deriveOrchestration } = require('./world-state');
 
 // Status history (in-memory, capped for small 2c/2g servers)
 const statusHistory = [];
@@ -521,6 +522,26 @@ function collectStatus(req = null) {
       updatedAt: null,
     },
     gameState: readGameStateBridge(),
+    worldState: {
+      available: false,
+      fingerprint: '',
+      modGraph: null,
+      save: null,
+      binding: null,
+      issues: [],
+      error: '',
+    },
+    orchestration: {
+      state: 'INIT',
+      phase: 'initializing',
+      explicit: true,
+      blockers: [],
+      worldFingerprint: '',
+      worldFingerprintShort: '',
+      modGraphHash: '',
+      modGraphHashShort: '',
+      updatedAt: null,
+    },
     joinability: {
       joinable: false,
       reason: 'unknown',
@@ -793,6 +814,35 @@ function collectStatus(req = null) {
     status.paused = true;
   }
   status.timePause = buildTimePauseStatus(status);
+
+  try {
+    const worldState = buildWorldState();
+    status.worldState = {
+      available: true,
+      generatedAt: worldState.generatedAt,
+      fingerprint: worldState.fingerprint,
+      fingerprintShort: worldState.fingerprint.slice(0, 12),
+      smapiVersion: worldState.smapiVersion,
+      modGraph: worldState.modGraph,
+      save: worldState.save,
+      binding: worldState.binding,
+      issues: worldState.issues,
+      files: worldState.files,
+    };
+    status.orchestration = deriveOrchestration(status, worldState);
+  } catch (error) {
+    status.worldState = {
+      ...status.worldState,
+      error: error.message,
+    };
+    status.orchestration = {
+      ...status.orchestration,
+      state: status.gameRunning ? 'DEGRADED' : 'STOPPED',
+      phase: 'world_state_failed',
+      blockers: ['world_state_failed'],
+      updatedAt: status.timestamp,
+    };
+  }
 
   if (!status.scriptsHealthy) {
     try {
