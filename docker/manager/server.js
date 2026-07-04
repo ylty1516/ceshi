@@ -12,6 +12,7 @@ const PANEL_DATA_DIR = `${PROJECT_DIR}/data/panel`;
 const UPDATE_STATUS_FILE = `${PANEL_DATA_DIR}/update-status.json`;
 const UPDATE_LOG_FILE = `${PANEL_DATA_DIR}/update.log`;
 const UPDATE_RUNNER_FILE = `${PANEL_DATA_DIR}/update-runner.sh`;
+const CHANGELOG_FILE = `${PROJECT_DIR}/CHANGELOG.md`;
 const UPDATE_CONTAINER = process.env.UPDATE_CONTAINER || 'puppy-stardew-panel-updater';
 const UPDATE_IMAGE = process.env.UPDATE_IMAGE || 'puppy-stardew-manager:local';
 const UPDATE_BRANCH = process.env.PUPPY_UPDATE_BRANCH || 'main';
@@ -60,6 +61,103 @@ function readTextTail(filePath, maxBytes = 32000) {
   } catch (error) {
     return '';
   }
+}
+
+function parseChangelogMarkdown(content) {
+  const lines = String(content || '').replace(/\r\n/g, '\n').split('\n');
+  const entries = [];
+  let title = 'Changelog';
+  let current = null;
+  let currentSection = null;
+
+  function pushEntry() {
+    if (current) {
+      entries.push(current);
+    }
+  }
+
+  for (const line of lines) {
+    const h1 = line.match(/^#\s+(.+)/);
+    if (h1 && entries.length === 0 && !current) {
+      title = h1[1].trim();
+      continue;
+    }
+
+    const h2 = line.match(/^##\s+(.+)/);
+    if (h2) {
+      pushEntry();
+      current = {
+        title: h2[1].trim(),
+        body: [],
+        sections: [],
+      };
+      currentSection = null;
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const h3 = line.match(/^###\s+(.+)/);
+    if (h3) {
+      currentSection = {
+        title: h3[1].trim(),
+        items: [],
+      };
+      current.sections.push(currentSection);
+      continue;
+    }
+
+    const bullet = line.match(/^\s*[-*]\s+(.+)/);
+    if (bullet) {
+      if (!currentSection) {
+        currentSection = {
+          title: '',
+          items: [],
+        };
+        current.sections.push(currentSection);
+      }
+      currentSection.items.push(bullet[1].trim());
+      continue;
+    }
+
+    const text = line.trim();
+    if (text) {
+      current.body.push(text);
+    }
+  }
+
+  pushEntry();
+
+  return {
+    title,
+    entries: entries.slice(0, 80),
+  };
+}
+
+function readChangelog() {
+  if (!fs.existsSync(CHANGELOG_FILE)) {
+    return {
+      success: false,
+      title: 'Changelog',
+      entries: [],
+      updatedAt: '',
+      file: CHANGELOG_FILE,
+      message: 'CHANGELOG.md was not found in the project directory.',
+    };
+  }
+
+  const content = fs.readFileSync(CHANGELOG_FILE, 'utf8');
+  const parsed = parseChangelogMarkdown(content);
+  const stat = fs.statSync(CHANGELOG_FILE);
+  return {
+    success: true,
+    title: parsed.title,
+    entries: parsed.entries,
+    updatedAt: stat.mtime ? stat.mtime.toISOString() : '',
+    file: 'CHANGELOG.md',
+  };
 }
 
 function getUpdaterContainerState() {
@@ -485,6 +583,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && req.url === '/update/status') {
     sendJson(res, 200, readUpdateStatus());
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/changelog') {
+    const changelog = readChangelog();
+    sendJson(res, changelog.success ? 200 : 404, changelog);
     return;
   }
 

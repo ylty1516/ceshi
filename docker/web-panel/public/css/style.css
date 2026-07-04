@@ -66,11 +66,11 @@ textarea {
   max-width: 100%;
 }
 
-:where(#content, #topbar, .topbar-right, .card, .stat-card, .stat-info, .detail-item, .section-header, .section-actions, .config-item, .config-value, .save-item, .backup-item, .mod-item, .player-card, .diagnostic-item, .health-item, .public-mod-item, .update-panel, .update-status, .toast, .modal-dialog) {
+:where(#content, #topbar, .topbar-right, .card, .stat-card, .stat-info, .detail-item, .section-header, .section-actions, .config-item, .config-value, .save-item, .backup-item, .mod-item, .player-card, .diagnostic-item, .health-item, .public-mod-item, .changelog-entry, .changelog-section, .update-panel, .update-status, .toast, .modal-dialog) {
   min-width: 0;
 }
 
-:where(.card, .stat-info, .detail-value, .detail-note, .detail-stats, .diagnostic-body, .health-detail, .health-action, .empty-state, .manual-pause-note, .save-name, .save-meta, .mod-name, .mod-meta, .player-name, .player-info, .config-label, .config-key, .config-help, .backup-status-meta, .backup-status-error, .update-status-title, .update-status-meta, .checksum-line, .toast) {
+:where(.card, .stat-info, .detail-value, .detail-note, .detail-stats, .diagnostic-body, .health-detail, .health-action, .empty-state, .manual-pause-note, .save-name, .save-meta, .mod-name, .mod-meta, .player-name, .player-info, .config-label, .config-key, .config-help, .backup-status-meta, .backup-status-error, .changelog-meta, .changelog-entry-title, .changelog-body, .changelog-section-title, .changelog-item, .update-status-title, .update-status-meta, .checksum-line, .toast) {
   overflow-wrap: anywhere;
 }
 
@@ -792,6 +792,66 @@ textarea {
 .log-text {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* ─── Changelog ───────────────────────────────────────────────── */
+
+.changelog-meta {
+  margin: -4px 0 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.changelog-list {
+  display: grid;
+  gap: 12px;
+}
+
+.changelog-entry {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+}
+
+.changelog-entry-title {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.changelog-body {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.changelog-sections {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.changelog-section-title {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.changelog-items {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.changelog-item {
+  margin: 4px 0;
 }
 
 /* ─── Terminal ────────────────────────────────────────────────── */

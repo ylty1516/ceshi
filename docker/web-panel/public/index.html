@@ -33,6 +33,15 @@
         <path d="M9 15h6" />
       </g>
     </symbol>
+    <symbol id="icon-changelog" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 4.5h10l2 2V19.5H5V6.5Z" />
+        <path d="M9 8h6" />
+        <path d="M9 12h6" />
+        <path d="M9 16h4" />
+        <path d="M16 4.5v3h3" />
+      </g>
+    </symbol>
     <symbol id="icon-terminal" viewBox="0 0 24 24">
       <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4.5 6.5h15v11h-15Z" />
@@ -214,6 +223,10 @@
           <span class="nav-icon"><svg class="icon"><use href="#icon-logs"></use></svg></span>
           <span class="nav-label" data-i18n="nav.logs">Logs</span>
         </li>
+        <li class="nav-item" data-page="changelog">
+          <span class="nav-icon"><svg class="icon"><use href="#icon-changelog"></use></svg></span>
+          <span class="nav-label" data-i18n="nav.changelog">Changelog</span>
+        </li>
         <li class="nav-item" data-page="diagnostics">
           <span class="nav-icon"><svg class="icon"><use href="#icon-alert-triangle"></use></svg></span>
           <span class="nav-label" data-i18n="nav.diagnostics">Diagnostics</span>
@@ -255,6 +268,7 @@
     <nav id="mobile-nav">
       <button class="mob-nav-item active" type="button" data-page="dashboard"><svg class="icon"><use href="#icon-dashboard"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="logs"><svg class="icon"><use href="#icon-logs"></use></svg></button>
+      <button class="mob-nav-item" type="button" data-page="changelog"><svg class="icon"><use href="#icon-changelog"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="diagnostics"><svg class="icon"><use href="#icon-alert-triangle"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="terminal"><svg class="icon"><use href="#icon-terminal"></use></svg></button>
       <button class="mob-nav-item" type="button" data-page="players"><svg class="icon"><use href="#icon-players"></use></svg></button>
@@ -475,6 +489,24 @@
             <div id="logMeta" class="log-meta"></div>
             <div id="logDiagnostics" class="diagnostics-panel" hidden></div>
             <div id="logOutput" class="log-output"></div>
+          </div>
+        </section>
+
+        <section id="page-changelog" class="page">
+          <div class="card">
+            <div class="section-header">
+              <h3 data-i18n="changelog.title">Update Log</h3>
+              <div class="section-actions">
+                <button class="btn btn-primary btn-sm" type="button" onclick="loadChangelog()">
+                  <svg class="icon"><use href="#icon-refresh"></use></svg>
+                  <span data-i18n="changelog.refresh">Refresh</span>
+                </button>
+              </div>
+            </div>
+            <div id="changelogMeta" class="changelog-meta"></div>
+            <div id="changelogList" class="changelog-list">
+              <div class="empty-state" data-i18n="changelog.loading">Loading changelog...</div>
+            </div>
           </div>
         </section>
 

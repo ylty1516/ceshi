@@ -99,6 +99,10 @@ app.get('/api/status', auth.verifyMiddleware, statusAPI.getStatus);
 const logsAPI = require('./api/logs');
 app.get('/api/logs', auth.verifyMiddleware, logsAPI.getLogs);
 
+// Changelog API
+const changelogAPI = require('./api/changelog');
+app.get('/api/changelog', auth.verifyMiddleware, changelogAPI.getChangelog);
+
 // Players API
 const playersAPI = require('./api/players');
 app.get('/api/players', auth.verifyMiddleware, playersAPI.getPlayers);

@@ -32,6 +32,7 @@ let backupStatusPoll = null;
 let lastBackupStatus = null;
 let panelUpdatePoll = null;
 let lastPanelUpdateStatus = null;
+let lastChangelogData = null;
 
 const STATUS_REFRESH_MS = 20000;
 const PLAYERS_REFRESH_MS = 20000;
@@ -66,7 +67,7 @@ function detectLanguage() {
 let currentLang = detectLanguage();
 const translations = {
   zh: {
-    'nav.dashboard': '仪表盘', 'nav.logs': '日志', 'nav.diagnostics': '诊断', 'nav.terminal': '终端',
+    'nav.dashboard': '仪表盘', 'nav.logs': '日志', 'nav.changelog': '更新日志', 'nav.diagnostics': '诊断', 'nav.terminal': '终端',
     'nav.players': '玩家', 'nav.saves': '存档', 'nav.config': '配置', 'nav.mods': '模组',
     'dash.status': '服务器状态', 'dash.players': '在线玩家', 'dash.uptime': '运行时间',
     'dash.gameDay': '游戏日期', 'dash.backups': '备份数量', 'dash.mods': '已加载Mod',
@@ -243,6 +244,13 @@ const translations = {
     'logs.noIssues': '未检测到已知问题', 'logs.issueCount': '{count} 个问题',
     'logs.cause': '原因', 'logs.action': '建议', 'logs.evidence': '证据',
     'logs.windowed': '显示最近日志窗口', 'logs.meta': '{shown}/{total} 行，来源 {file}',
+    'changelog.title': '更新日志',
+    'changelog.refresh': '刷新',
+    'changelog.loading': '正在加载更新日志...',
+    'changelog.empty': '暂时没有更新日志。',
+    'changelog.meta': '来源 {file} · 更新于 {time}',
+    'changelog.sourceFallback': 'Manager 暂不可用，显示本地缓存。',
+    'changelog.loadFail': '更新日志加载失败',
     'toast.backupOk': '备份创建成功！', 'toast.backupFail': '备份失败',
     'toast.saveUploadOk': '存档上传成功。', 'toast.saveUploadDefaultOk': '存档上传成功，已设为默认自动载入存档。', 'toast.saveUploadFail': '存档上传失败',
     'toast.saveDefaultOk': '默认存档已更新。', 'toast.saveDefaultFail': '设置默认存档失败',
@@ -268,7 +276,7 @@ const translations = {
     'theme.light': '切换到亮色模式', 'theme.dark': '切换到暗色模式',
   },
   en: {
-    'nav.dashboard': 'Dashboard', 'nav.logs': 'Logs', 'nav.diagnostics': 'Diagnostics', 'nav.terminal': 'Terminal',
+    'nav.dashboard': 'Dashboard', 'nav.logs': 'Logs', 'nav.changelog': 'Changelog', 'nav.diagnostics': 'Diagnostics', 'nav.terminal': 'Terminal',
     'nav.players': 'Players', 'nav.saves': 'Saves', 'nav.config': 'Config', 'nav.mods': 'Mods',
     'dash.status': 'Server Status', 'dash.players': 'Online Players', 'dash.uptime': 'Uptime',
     'dash.gameDay': 'Game Day', 'dash.backups': 'Backups', 'dash.mods': 'Loaded Mods',
@@ -445,6 +453,13 @@ const translations = {
     'logs.noIssues': 'No known issues detected', 'logs.issueCount': '{count} issue(s)',
     'logs.cause': 'Cause', 'logs.action': 'Action', 'logs.evidence': 'Evidence',
     'logs.windowed': 'Showing recent log window', 'logs.meta': '{shown}/{total} lines from {file}',
+    'changelog.title': 'Update Log',
+    'changelog.refresh': 'Refresh',
+    'changelog.loading': 'Loading changelog...',
+    'changelog.empty': 'No changelog entries yet.',
+    'changelog.meta': 'Source {file} · updated {time}',
+    'changelog.sourceFallback': 'Manager is unavailable, showing the local fallback.',
+    'changelog.loadFail': 'Failed to load changelog',
     'toast.backupOk': 'Backup created!', 'toast.backupFail': 'Backup failed',
     'toast.saveUploadOk': 'Save uploaded.', 'toast.saveUploadDefaultOk': 'Save uploaded and set as the default auto-load save.', 'toast.saveUploadFail': 'Save upload failed',
     'toast.saveDefaultOk': 'Default save updated.', 'toast.saveDefaultFail': 'Failed to set default save',
@@ -542,6 +557,9 @@ function applyTranslations() {
   if (lastPanelUpdateStatus) {
     renderPanelUpdateStatus(lastPanelUpdateStatus);
   }
+  if (lastChangelogData) {
+    renderChangelog(lastChangelogData);
+  }
 }
 
 // ─── Init ────────────────────────────────────────────────────────
@@ -628,6 +646,13 @@ function reloadCurrentPage() {
         document.getElementById('logSearch')?.value || ''
       );
       break;
+    case 'changelog':
+      if (lastChangelogData) {
+        renderChangelog(lastChangelogData);
+      } else {
+        loadChangelog();
+      }
+      break;
     case 'diagnostics':
       loadDiagnostics();
       break;
@@ -694,7 +719,7 @@ function navigateTo(page) {
 
   // Update title
   const titleMap = {
-    dashboard: t('nav.dashboard'), logs: t('nav.logs'), diagnostics: t('nav.diagnostics'), terminal: t('nav.terminal'),
+    dashboard: t('nav.dashboard'), logs: t('nav.logs'), changelog: t('nav.changelog'), diagnostics: t('nav.diagnostics'), terminal: t('nav.terminal'),
     players: t('nav.players'), saves: t('nav.saves'), config: t('nav.config'), mods: t('nav.mods'),
   };
   document.getElementById('pageTitle').textContent = titleMap[page] || page;
@@ -706,6 +731,7 @@ function navigateTo(page) {
   switch (page) {
     case 'dashboard': loadDashboard(); break;
     case 'logs': loadLogs('all'); subscribeToLogs('all'); break;
+    case 'changelog': loadChangelog(); break;
     case 'diagnostics': loadDiagnostics(); break;
     case 'players': startPlayersAutoRefresh(); break;
     case 'saves': loadSaves(); break;
@@ -1181,6 +1207,79 @@ function renderDiagnosticIssue(issue) {
       (evidence ? '<div><strong>' + escapeHtml(t('logs.evidence')) + ':</strong><div class="diagnostic-evidence">' + escapeHtml(evidence) + '</div></div>' : '') +
     '</div>';
   return item;
+}
+
+// ─── Changelog ──────────────────────────────────────────────────
+async function loadChangelog() {
+  const list = document.getElementById('changelogList');
+  const meta = document.getElementById('changelogMeta');
+  if (list) {
+    list.innerHTML = '<div class="empty-state">' + escapeHtml(t('changelog.loading')) + '</div>';
+  }
+  if (meta) {
+    meta.textContent = '';
+  }
+
+  const data = await API.get('/api/changelog');
+  if (!data) return;
+
+  if (data.error) {
+    lastChangelogData = null;
+    if (list) {
+      list.innerHTML = '<div class="empty-state">' + escapeHtml(formatApiError(data, t('changelog.loadFail'))) + '</div>';
+    }
+    return;
+  }
+
+  renderChangelog(data);
+}
+
+function renderChangelog(data) {
+  lastChangelogData = data || null;
+  const list = document.getElementById('changelogList');
+  const meta = document.getElementById('changelogMeta');
+  if (!list) return;
+
+  const entries = Array.isArray(data?.entries) ? data.entries : [];
+  if (meta) {
+    const updatedAt = data?.updatedAt ? formatBackupTimestamp(data.updatedAt) : '--';
+    const file = data?.file || 'CHANGELOG.md';
+    const fallback = data?.managerError ? ' · ' + t('changelog.sourceFallback') : '';
+    meta.textContent = tf('changelog.meta', { file, time: updatedAt }) + fallback;
+  }
+
+  if (entries.length === 0) {
+    list.innerHTML = '<div class="empty-state">' + escapeHtml(t('changelog.empty')) + '</div>';
+    return;
+  }
+
+  list.innerHTML = entries.map(renderChangelogEntry).join('');
+}
+
+function renderChangelogEntry(entry) {
+  const body = Array.isArray(entry.body) && entry.body.length > 0
+    ? '<div class="changelog-body">' + entry.body.map(line => escapeHtml(line)).join('<br>') + '</div>'
+    : '';
+  const sections = Array.isArray(entry.sections)
+    ? entry.sections.filter(section => section && Array.isArray(section.items) && section.items.length > 0)
+    : [];
+
+  return '<article class="changelog-entry">' +
+    '<div class="changelog-entry-title">' + escapeHtml(entry.title || '--') + '</div>' +
+    body +
+    (sections.length > 0
+      ? '<div class="changelog-sections">' + sections.map(renderChangelogSection).join('') + '</div>'
+      : '') +
+  '</article>';
+}
+
+function renderChangelogSection(section) {
+  return '<section class="changelog-section">' +
+    (section.title ? '<div class="changelog-section-title">' + escapeHtml(section.title) + '</div>' : '') +
+    '<ul class="changelog-items">' +
+      section.items.map(item => '<li class="changelog-item">' + escapeHtml(item) + '</li>').join('') +
+    '</ul>' +
+  '</section>';
 }
 
 // ─── Terminal ────────────────────────────────────────────────────

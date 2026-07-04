@@ -216,6 +216,7 @@ body::after {
 .save-item,
 .backup-item,
 .mod-item,
+.changelog-entry,
 .backup-status,
 .update-status,
 .diagnostic-item,
@@ -235,6 +236,7 @@ body::after {
 :root[data-theme='light'] .save-item,
 :root[data-theme='light'] .backup-item,
 :root[data-theme='light'] .mod-item,
+:root[data-theme='light'] .changelog-entry,
 :root[data-theme='light'] .backup-status,
 :root[data-theme='light'] .update-status,
 :root[data-theme='light'] .diagnostic-item,
@@ -259,6 +261,7 @@ body::after {
 .player-name,
 .save-name,
 .mod-name,
+.changelog-entry-title,
 .update-status-title,
 .diagnostic-title {
   color: var(--text-primary);
@@ -269,6 +272,7 @@ body::after {
 :root[data-theme='light'] .player-name,
 :root[data-theme='light'] .save-name,
 :root[data-theme='light'] .mod-name,
+:root[data-theme='light'] .changelog-entry-title,
 :root[data-theme='light'] .update-status-title,
 :root[data-theme='light'] .diagnostic-title {
   color: #392514;
@@ -501,6 +505,9 @@ body::after {
 .detail-label,
 .stat-label,
 .config-help,
+.changelog-body,
+.changelog-items,
+.changelog-meta,
 .mod-meta,
 .save-meta,
 .backup-status-meta,
