@@ -54,6 +54,7 @@ LOW_PERF_DEFAULT_FPS=30
 LOW_PERF_DEFAULT_COLOR_DEPTH=16
 
 LOW_PERF_MODE=${LOW_PERF_MODE:-false}
+MAX_PLAYERS=${MAX_PLAYERS:-8}
 TARGET_FPS_RAW=${TARGET_FPS:-}
 RESOLUTION_WIDTH=${RESOLUTION_WIDTH:-$DEFAULT_RESOLUTION_WIDTH}
 RESOLUTION_HEIGHT=${RESOLUTION_HEIGHT:-$DEFAULT_RESOLUTION_HEIGHT}
@@ -151,6 +152,13 @@ apply_startup_preferences_tuning() {
     local config_file=$1
 
     [ -f "$config_file" ] || return 0
+
+    local player_limit="$MAX_PLAYERS"
+    if ! echo "$player_limit" | grep -Eq '^[0-9]+$' || [ "$player_limit" -lt 1 ] || [ "$player_limit" -gt 8 ]; then
+        player_limit=8
+    fi
+
+    perl -0pi -e "s#<playerLimit>.*?</playerLimit>#<playerLimit>${player_limit}</playerLimit>#s;" "$config_file"
 
     if [ "$LOW_PERF_MODE" != "true" ]; then
         return 0

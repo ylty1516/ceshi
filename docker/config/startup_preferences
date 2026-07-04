@@ -11,7 +11,7 @@
   <windowMode>0</windowMode>
   <displayIndex>0</displayIndex>
   <gamepadMode>Auto</gamepadMode>
-  <playerLimit>-1</playerLimit>
+  <playerLimit>8</playerLimit>
   <fullscreenResolutionX>1280</fullscreenResolutionX>
   <fullscreenResolutionY>720</fullscreenResolutionY>
   <lastEnteredIP />

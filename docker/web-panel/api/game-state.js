@@ -6,6 +6,10 @@ const fs = require('fs');
 const config = require('../server');
 
 const DEFAULT_GAME_STATE_MAX_AGE_SECONDS = 20;
+const configuredMaxPlayers = parseInt(process.env.MAX_PLAYERS || '8', 10);
+const MAX_PLAYERS = Number.isFinite(configuredMaxPlayers) && configuredMaxPlayers > 0 && configuredMaxPlayers <= 8
+  ? configuredMaxPlayers
+  : 8;
 
 function readGameStateBridge(maxAgeSeconds = DEFAULT_GAME_STATE_MAX_AGE_SECONDS) {
   const emptyState = {
@@ -58,6 +62,7 @@ function getVisiblePlayers(gameState) {
 
 module.exports = {
   DEFAULT_GAME_STATE_MAX_AGE_SECONDS,
+  MAX_PLAYERS,
   getVisiblePlayers,
   readFreshGameState,
   readGameStateBridge,

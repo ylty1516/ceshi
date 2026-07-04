@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const config = require('../server');
-const { getVisiblePlayers, readFreshGameState } = require('./game-state');
+const { MAX_PLAYERS, getVisiblePlayers, readFreshGameState } = require('./game-state');
 
 // Player history (in-memory)
 const playerHistory = [];
@@ -143,7 +143,7 @@ function getPlayers(req, res) {
   if (statePlayers) {
     return res.json({
       online: statePlayers.length,
-      max: 4,
+      max: MAX_PLAYERS,
       players: statePlayers,
       source: 'smapi-state-bridge',
       trusted: true,
@@ -157,7 +157,7 @@ function getPlayers(req, res) {
 
   res.json({
     online: 0,
-    max: 4,
+    max: MAX_PLAYERS,
     players: [],
     source: 'untrusted',
     trusted: false,

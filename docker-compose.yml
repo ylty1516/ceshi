@@ -87,6 +87,7 @@ services:
       - MANUAL_PAUSE_FILE=${MANUAL_PAUSE_FILE:-/home/steam/web-panel/data/manual-pause.json}
       - AUTO_PAUSE_FILE=${AUTO_PAUSE_FILE:-/home/steam/web-panel/data/auto-pause.json}
       - GAME_STATE_FILE=${GAME_STATE_FILE:-/home/steam/web-panel/data/game-state.json}
+      - MAX_PLAYERS=${MAX_PLAYERS:-8}
       - PANEL_STATUS_CACHE_MS=${PANEL_STATUS_CACHE_MS:-5000}
       - PANEL_STATUS_HISTORY_LIMIT=${PANEL_STATUS_HISTORY_LIMIT:-180}
       - PANEL_STATUS_LOG_TAIL_BYTES=${PANEL_STATUS_LOG_TAIL_BYTES:-131072}

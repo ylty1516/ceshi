@@ -69,7 +69,7 @@ const translations = {
     'dash.gameDay': '游戏日期', 'dash.backups': '备份数量', 'dash.mods': '已加载Mod',
     'dash.resources': '系统资源', 'dash.quickActions': '快捷操作',
     'dash.details': '服务器详情', 'dash.joinIp': '联机 IP', 'dash.joinPort': '联机端口',
-    'dash.joinable': '可加入状态', 'dash.connectionFreshness': '人数刷新', 'dash.modRuntime': 'Mod 生效状态', 'dash.autoPause': '自动暂停', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
+    'dash.joinable': '可加入状态', 'dash.connectionFreshness': '人数刷新', 'dash.modRuntime': 'Mod 生效状态', 'dash.autoPause': '自动暂停', 'dash.timePause': '游戏时间状态', 'dash.localIps': '容器 IP', 'dash.version': '版本', 'dash.scriptHealth': '自动化脚本',
     'dash.metricsPort': '监控端口', 'dash.events': '自动化事件',
     'dash.passout': '昏倒处理', 'dash.readyCheck': '准备检查', 'dash.offlineEvents': '离线恢复',
     'dash.joinHint': '游戏内通常只需要输入 IP 地址。', 'dash.portHint': '星露谷联机输入框里不要追加端口号。',
@@ -106,6 +106,15 @@ const translations = {
     'autoPause.note.waiting': '服务器无人在线，正在等待 {seconds}/{delay} 秒后暂停。',
     'autoPause.note.manual': '管理员手动暂停优先，自动暂停不会覆盖它。',
     'autoPause.note.blocked': '当前状态不适合切换暂停：{reason}',
+    'timePause.running': '正常流动',
+    'timePause.paused': '已暂停',
+    'timePause.source.running': '游戏内时间正在正常流动。',
+    'timePause.source.manual': '管理员手动暂停已开启，游戏内时间被冻结。',
+    'timePause.source.auto_empty': '自动空服暂停正在接管，当前无人在线导致时间冻结。',
+    'timePause.source.single_menu': '单个真实玩家打开背包，本地上报 Mod 触发时间冻结。',
+    'timePause.source.game': 'SMAPI 报告 Game1.paused=true，但没有匹配到面板暂停来源。',
+    'timePause.source.inferred': '面板从日志或控制文件推断为暂停，等待 SMAPI 状态桥确认。',
+    'timePause.reason': '原因：{reason}',
     'dash.viewLogs': '查看日志', 'dash.restart': '重启服务器', 'dash.backup': '立即备份',
     'dash.pauseTime': '暂停时间', 'dash.resumeTime': '恢复时间',
     'dash.enableAutoPause': '开启自动暂停', 'dash.disableAutoPause': '关闭自动暂停',
@@ -236,7 +245,7 @@ const translations = {
     'dash.gameDay': 'Game Day', 'dash.backups': 'Backups', 'dash.mods': 'Loaded Mods',
     'dash.resources': 'System Resources', 'dash.quickActions': 'Quick Actions',
     'dash.details': 'Server Details', 'dash.joinIp': 'Join IP', 'dash.joinPort': 'Join Port',
-    'dash.joinable': 'Joinable', 'dash.connectionFreshness': 'Player Refresh', 'dash.modRuntime': 'Mod Runtime', 'dash.autoPause': 'Auto Pause', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
+    'dash.joinable': 'Joinable', 'dash.connectionFreshness': 'Player Refresh', 'dash.modRuntime': 'Mod Runtime', 'dash.autoPause': 'Auto Pause', 'dash.timePause': 'Time State', 'dash.localIps': 'Container IPs', 'dash.version': 'Version', 'dash.scriptHealth': 'Automation',
     'dash.metricsPort': 'Metrics Port', 'dash.events': 'Automation Events',
     'dash.passout': 'Passout', 'dash.readyCheck': 'Ready Check', 'dash.offlineEvents': 'Offline Recovery',
     'dash.joinHint': 'In-game usually only needs the IP address.', 'dash.portHint': 'Do not append the port in Stardew\'s join field.',
@@ -273,6 +282,15 @@ const translations = {
     'autoPause.note.waiting': 'No players online. Pausing after {seconds}/{delay}s.',
     'autoPause.note.manual': 'Manual pause has priority and will not be overridden.',
     'autoPause.note.blocked': 'Pause switching is blocked by the current state: {reason}',
+    'timePause.running': 'Time running',
+    'timePause.paused': 'Paused',
+    'timePause.source.running': 'In-game time is moving normally.',
+    'timePause.source.manual': 'Manual pause is enabled by the panel, so in-game time is frozen.',
+    'timePause.source.auto_empty': 'Automatic empty-server pause is holding the game time frozen.',
+    'timePause.source.single_menu': 'A solo real player opened their backpack and the reporter mod froze time.',
+    'timePause.source.game': 'SMAPI reports Game1.paused=true, but no panel pause owner claimed it.',
+    'timePause.source.inferred': 'The panel inferred a pause from logs or control files while waiting for the state bridge.',
+    'timePause.reason': 'Reason: {reason}',
     'dash.viewLogs': 'View Logs', 'dash.restart': 'Restart Server', 'dash.backup': 'Backup Now',
     'dash.pauseTime': 'Pause Time', 'dash.resumeTime': 'Resume Time',
     'dash.enableAutoPause': 'Enable Auto Pause', 'dash.disableAutoPause': 'Disable Auto Pause',
@@ -738,7 +756,7 @@ function updateDashboardUI(data) {
 
   // Players
   document.getElementById('stat-players').textContent =
-    `${data.players?.online || 0}/${data.players?.max || 4}`;
+    `${data.players?.online || 0}/${data.players?.max || 8}`;
 
   // Uptime
   document.getElementById('stat-uptime').textContent = formatUptime(data.uptime || 0);
@@ -773,6 +791,7 @@ function updateDashboardUI(data) {
   updateConnectionFreshnessUI(data.connection || {});
   updateModRuntimeUI(data.modRuntime || { active: false, state: 'unknown' });
   updateAutoPauseUI(data.autoPause || { enabled: false, state: 'unknown' });
+  updateTimePauseUI(data.timePause || { paused: data.paused === true, source: data.paused ? 'inferred' : 'running' });
   setText('detail-local-ips', network.localIps && network.localIps.length ? network.localIps.join(', ') : '--');
   setText('detail-version', data.version || '--');
   setText('detail-script-health', data.scriptsHealthy ? t('dash.healthy') : t('dash.unhealthy'));
@@ -917,6 +936,28 @@ function updateAutoPauseUI(autoPause) {
   note.textContent = tf('autoPause.note.blocked', {
     reason: autoPause?.controlError || autoPause?.reason || state,
   });
+}
+
+function updateTimePauseUI(timePause) {
+  const value = document.getElementById('detail-time-pause');
+  const note = document.getElementById('detail-time-pause-note');
+  const paused = timePause && timePause.paused === true;
+  const source = timePause?.source || (paused ? 'inferred' : 'running');
+  const sourceKey = `timePause.source.${source}`;
+  const sourceText = t(sourceKey) === sourceKey ? (timePause?.reason || source) : t(sourceKey);
+
+  if (value) {
+    value.textContent = paused ? t('timePause.paused') : t('timePause.running');
+    setTone(value, paused ? 'warn' : 'ok');
+  }
+
+  if (note) {
+    const parts = [sourceText];
+    if (timePause?.reason && source !== 'running') {
+      parts.push(tf('timePause.reason', { reason: timePause.reason }));
+    }
+    note.textContent = parts.filter(Boolean).join(' ');
+  }
 }
 
 function updateManualPauseUI(manualPause) {

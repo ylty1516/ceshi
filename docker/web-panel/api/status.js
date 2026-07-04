@@ -8,7 +8,7 @@ const http = require('http');
 const https = require('https');
 const config = require('../server');
 const { AppError, commandError, sendError } = require('../errors');
-const { getVisiblePlayers, readGameStateBridge } = require('./game-state');
+const { MAX_PLAYERS, getVisiblePlayers, readGameStateBridge } = require('./game-state');
 
 // Status history (in-memory, capped for small 2c/2g servers)
 const statusHistory = [];
@@ -395,6 +395,44 @@ function describeModRuntime(gameState, gameRunning) {
   };
 }
 
+function buildTimePauseStatus(status) {
+  const singlePause = status.singleFarmhandMenuPause || {};
+  const manualRequested = status.manualPause && status.manualPause.enabled === true;
+  const autoApplied = status.autoPause && (status.autoPause.applied === true || status.autoPause.state === 'paused');
+  const singleMenuApplied = singlePause && (singlePause.applied === true || singlePause.state === 'paused');
+  const paused = status.paused === true || manualRequested || autoApplied || singleMenuApplied;
+  let source = paused ? 'game' : 'running';
+  let reason = paused ? 'game_paused' : 'time_running';
+
+  if (manualRequested) {
+    source = 'manual';
+    reason = status.manualPause.reason || 'manual_pause_enabled';
+  } else if (autoApplied) {
+    source = 'auto_empty';
+    reason = status.autoPause.reason || 'empty_server';
+  } else if (singleMenuApplied) {
+    source = 'single_menu';
+    reason = singlePause.reason || 'single_farmhand_menu';
+  } else if (!paused) {
+    source = 'running';
+    reason = 'time_running';
+  } else if (!status.gameState || !status.gameState.available || status.gameState.stale) {
+    source = 'inferred';
+    reason = 'state_bridge_missing_or_stale';
+  }
+
+  return {
+    paused,
+    source,
+    reason,
+    bridgeFresh: status.gameState && status.gameState.available === true && status.gameState.stale !== true,
+    manualRequested,
+    autoApplied,
+    singleMenuApplied,
+    updatedAt: status.gameState && status.gameState.updatedAt ? status.gameState.updatedAt : status.timestamp,
+  };
+}
+
 function collectStatus(req = null) {
   const now = Date.now();
   if (cachedStatus && now - cacheTime < CACHE_TTL) {
@@ -408,7 +446,7 @@ function collectStatus(req = null) {
     timestamp: new Date().toISOString(),
     gameRunning: false,
     uptime: 0,
-    players: { online: 0, max: 4, list: [], source: 'unknown' },
+    players: { online: 0, max: MAX_PLAYERS, list: [], source: 'unknown' },
     cpu: 0,
     memory: { used: 0, limit: 2048 },
     day: 'Unknown',
@@ -439,6 +477,29 @@ function collectStatus(req = null) {
         blockers: [],
       },
     },
+    singleFarmhandMenuPause: {
+      enabled: false,
+      applied: false,
+      state: 'unknown',
+      reason: '',
+      onlineFarmhands: 0,
+      playerId: '',
+      playerName: '',
+      menuType: '',
+      clientFresh: false,
+      timeoutSeconds: 0,
+      clientModId: '',
+    },
+    timePause: {
+      paused: false,
+      source: 'unknown',
+      reason: '',
+      bridgeFresh: false,
+      manualRequested: false,
+      autoApplied: false,
+      singleMenuApplied: false,
+      updatedAt: null,
+    },
     gameState: readGameStateBridge(),
     joinability: {
       joinable: false,
@@ -466,7 +527,7 @@ function collectStatus(req = null) {
       joinIp: '',
       joinPort: 24642,
       online: 0,
-      max: 4,
+      max: MAX_PLAYERS,
       source: 'unknown',
       trusted: false,
       refreshedAt: null,
@@ -610,6 +671,30 @@ function collectStatus(req = null) {
         control: autoPauseControl,
       };
     }
+    if (gameState.singleFarmhandMenuPause && typeof gameState.singleFarmhandMenuPause === 'object') {
+      status.singleFarmhandMenuPause = {
+        ...status.singleFarmhandMenuPause,
+        enabled: gameState.singleFarmhandMenuPause.enabled === true,
+        applied: gameState.singleFarmhandMenuPause.applied === true,
+        state: typeof gameState.singleFarmhandMenuPause.state === 'string'
+          ? gameState.singleFarmhandMenuPause.state
+          : status.singleFarmhandMenuPause.state,
+        reason: typeof gameState.singleFarmhandMenuPause.reason === 'string' ? gameState.singleFarmhandMenuPause.reason : '',
+        onlineFarmhands: Number.isFinite(gameState.singleFarmhandMenuPause.onlineFarmhands)
+          ? gameState.singleFarmhandMenuPause.onlineFarmhands
+          : visiblePlayers.length,
+        playerId: typeof gameState.singleFarmhandMenuPause.playerId === 'string' ? gameState.singleFarmhandMenuPause.playerId : '',
+        playerName: typeof gameState.singleFarmhandMenuPause.playerName === 'string' ? gameState.singleFarmhandMenuPause.playerName : '',
+        menuType: typeof gameState.singleFarmhandMenuPause.menuType === 'string' ? gameState.singleFarmhandMenuPause.menuType : '',
+        clientFresh: gameState.singleFarmhandMenuPause.clientFresh === true,
+        timeoutSeconds: Number.isFinite(gameState.singleFarmhandMenuPause.timeoutSeconds)
+          ? gameState.singleFarmhandMenuPause.timeoutSeconds
+          : status.singleFarmhandMenuPause.timeoutSeconds,
+        clientModId: typeof gameState.singleFarmhandMenuPause.clientModId === 'string'
+          ? gameState.singleFarmhandMenuPause.clientModId
+          : status.singleFarmhandMenuPause.clientModId,
+      };
+    }
   } else {
     status.players.online = 0;
     status.players.list = [];
@@ -628,7 +713,7 @@ function collectStatus(req = null) {
     joinIp: status.network.joinIp || '',
     joinPort: status.network.joinPort || 24642,
     online: status.players.online || 0,
-    max: status.players.max || 4,
+    max: status.players.max || MAX_PLAYERS,
     source: status.players.source || 'unknown',
     trusted: status.players.source === 'smapi-state-bridge',
     refreshedAt: status.players.refreshedAt || null,
@@ -649,6 +734,13 @@ function collectStatus(req = null) {
     safeToSwitch: autoPauseBlockers.length === 0,
     blockers: autoPauseBlockers,
   };
+  if (status.autoPause.applied === true
+    || status.autoPause.state === 'paused'
+    || status.singleFarmhandMenuPause.applied === true
+    || status.singleFarmhandMenuPause.state === 'paused') {
+    status.paused = true;
+  }
+  status.timePause = buildTimePauseStatus(status);
 
   if (!status.scriptsHealthy) {
     try {

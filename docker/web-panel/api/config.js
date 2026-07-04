@@ -44,6 +44,7 @@ const CONFIG_SCHEMA = {
   'Game': [
     { key: 'SAVE_NAME', label: 'Save Name', type: 'text', default: '', descriptionKey: 'config.help.SAVE_NAME' },
     { key: 'PUBLIC_IP', label: 'Public Join IP', type: 'text', default: '', descriptionKey: 'config.help.PUBLIC_IP' },
+    { key: 'MAX_PLAYERS', label: 'Max Players', type: 'number', default: '8', min: 1, max: 8 },
   ],
   'Other': [
     { key: 'TZ', label: 'Timezone', type: 'text', default: 'UTC' },
