@@ -164,7 +164,10 @@ const translations = {
     'mods.custom': '自定义', 'mods.builtin': '内置',
     'mods.upload': '上传模组', 'mods.download': '下载', 'mods.delete': '删除', 'mods.confirmDelete': '确定要删除模组 {name} 吗？',
     'mods.uploadHint': '选择 .zip 模组文件', 'mods.uploading': '上传中...',
+    'mods.overwriting': '正在覆盖旧模组...',
+    'mods.confirmOverwrite': '已存在同名模组 {name}。是否先自动备份并覆盖旧模组？',
     'mods.uploadInstalled': '模组已上传并安装到游戏目录。重启服务器后会加载新模组。',
+    'mods.uploadReplaced': '同名旧模组已备份并覆盖。重启服务器后会加载新版本。',
     'mods.uploadNoManifest': '模组压缩包已上传，但未找到 manifest.json，请检查压缩包结构。',
     'mods.uploadFallback': '模组压缩包已上传，但自动安装失败。重启后仍会尝试从压缩包安装。',
     'mods.deleteNeedsRestart': '模组已删除。重启服务器后将完全卸载。',
@@ -373,7 +376,10 @@ const translations = {
     'mods.custom': 'Custom', 'mods.builtin': 'Built-in',
     'mods.upload': 'Upload Mod', 'mods.download': 'Download', 'mods.delete': 'Delete', 'mods.confirmDelete': 'Are you sure you want to delete mod {name}?',
     'mods.uploadHint': 'Select a .zip mod file', 'mods.uploading': 'Uploading...',
+    'mods.overwriting': 'Overwriting old mod...',
+    'mods.confirmOverwrite': 'A mod named {name} already exists. Back it up and overwrite it now?',
     'mods.uploadInstalled': 'Mod uploaded and installed into the game Mods directory. Restart the server to load it.',
+    'mods.uploadReplaced': 'The old mod was backed up and overwritten. Restart the server to load the new version.',
     'mods.uploadNoManifest': 'Mod archive uploaded, but no manifest.json was found. Check the archive structure.',
     'mods.uploadFallback': 'Mod archive uploaded, but automatic installation failed. Restart may still install it from the archive.',
     'mods.deleteNeedsRestart': 'Mod deleted. Restart the server to fully unload it.',
@@ -2141,7 +2147,7 @@ async function handleModUpload(input) {
   if (!input.files || !input.files[0]) return;
   var file = input.files[0];
 
-  if (!file.name.endsWith('.zip')) {
+  if (!/\.zip$/i.test(file.name)) {
     showToast('Only .zip files are supported', 'error');
     return;
   }
@@ -2156,14 +2162,22 @@ async function handleModUpload(input) {
   var reader = new FileReader();
   reader.onload = async function() {
     var base64 = reader.result.split(',')[1];
-    var data = await API.post('/api/mods/upload', {
-      filename: file.name,
-      data: base64,
-    });
+    var data = await uploadModArchive(file.name, base64, false);
+
+    if (isOverwriteableModUploadError(data)) {
+      const overwrite = confirm(tf('mods.confirmOverwrite', { name: file.name }));
+      if (overwrite) {
+        document.getElementById('modUploadStatus').textContent = t('mods.overwriting');
+        data = await uploadModArchive(file.name, base64, true);
+      } else {
+        document.getElementById('modUploadStatus').textContent = '';
+        input.value = '';
+        return;
+      }
+    }
 
     document.getElementById('modUploadStatus').textContent = '';
     input.value = '';
-
     if (data && data.success) {
       showToast(getModUploadToast(data), 'success');
       loadMods();
@@ -2172,6 +2186,21 @@ async function handleModUpload(input) {
     }
   };
   reader.readAsDataURL(file);
+}
+
+async function uploadModArchive(filename, base64, overwrite) {
+  return API.post('/api/mods/upload', {
+    filename,
+    data: base64,
+    overwrite,
+  });
+}
+
+function isOverwriteableModUploadError(data) {
+  return data &&
+    data.code === 'MOD_ALREADY_EXISTS' &&
+    data.metadata &&
+    data.metadata.canOverwrite === true;
 }
 
 async function deleteMod(folder, name) {
@@ -2239,6 +2268,9 @@ async function downloadClientModPack() {
 function getModUploadToast(data) {
   if (data && data.success) {
     var clientPackText = appendSentence(getModBackupResultText(data.backup), getClientPackResultText(data.clientPack));
+    if (data.overwritten && data.hasManifest) {
+      return appendSentence(t('mods.uploadReplaced'), clientPackText);
+    }
     if (data.hasManifest) {
       return appendSentence(t('mods.uploadInstalled'), clientPackText);
     }

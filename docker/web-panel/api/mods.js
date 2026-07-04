@@ -285,6 +285,75 @@ function getMatchingMetadata(folder) {
   );
 }
 
+function getUploadMetadata(filename) {
+  const safeFilename = path.basename(filename || '');
+  const baseName = safeFilename.replace(/\.zip$/i, '');
+  const entries = [];
+  const seenPaths = new Set();
+
+  const add = (metadata) => {
+    if (!metadata || !metadata._path || seenPaths.has(metadata._path)) {
+      return;
+    }
+
+    entries.push(metadata);
+    seenPaths.add(metadata._path);
+  };
+
+  add(loadMetadataByBaseName(baseName));
+  for (const metadata of loadAllMetadata()) {
+    if (path.basename(metadata.filename || '') === safeFilename) {
+      add(metadata);
+    }
+  }
+
+  return entries;
+}
+
+function getUploadTargets(filename) {
+  const safeFilename = path.basename(filename || '');
+  const baseName = safeFilename.replace(/\.zip$/i, '');
+  const sourcePaths = new Set([
+    path.join(CUSTOM_MODS_DIR, safeFilename),
+    getMetadataPath(baseName),
+  ]);
+  const gamePaths = new Set();
+
+  for (const metadata of getUploadMetadata(safeFilename)) {
+    if (metadata.filename) {
+      sourcePaths.add(path.join(CUSTOM_MODS_DIR, path.basename(metadata.filename)));
+    }
+    if (metadata._path) {
+      sourcePaths.add(metadata._path);
+    }
+    if (Array.isArray(metadata.installedFolders)) {
+      for (const installedFolder of metadata.installedFolders) {
+        const safeFolder = path.basename(installedFolder || '');
+        if (safeFolder) {
+          gamePaths.add(path.join(GAME_MODS_DIR, safeFolder));
+        }
+      }
+    }
+  }
+
+  return {
+    sourcePaths: [...sourcePaths],
+    gamePaths: [...gamePaths],
+  };
+}
+
+function removeUploadTargets(filename) {
+  const targets = getUploadTargets(filename);
+  for (const target of [...targets.sourcePaths, ...targets.gamePaths]) {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+}
+
+function hasUploadTarget(filename) {
+  const targets = getUploadTargets(filename);
+  return [...targets.sourcePaths, ...targets.gamePaths].some(target => fs.existsSync(target));
+}
+
 function findManifestDirectories(rootDir, maxDepth = 3, depth = 0) {
   if (depth > maxDepth || !fs.existsSync(rootDir)) {
     return [];
@@ -1180,6 +1249,7 @@ function uploadMod(req, res) {
     var body = req.body || {};
     var filename = body.filename;
     var data = body.data;
+    var overwrite = body.overwrite === true || body.overwrite === 'true' || body.overwrite === 1 || body.overwrite === '1';
 
     if (!filename || !data) {
       return sendError(res, req, new AppError('Missing filename or data', {
@@ -1192,7 +1262,7 @@ function uploadMod(req, res) {
 
     // Sanitize filename
     filename = path.basename(filename);
-    if (!filename.endsWith('.zip')) {
+    if (!/\.zip$/i.test(filename) || filename.replace(/\.zip$/i, '').trim() === '') {
       return sendError(res, req, new AppError('Only .zip files are supported', {
         status: 400,
         code: 'MOD_UPLOAD_UNSUPPORTED_TYPE',
@@ -1217,14 +1287,19 @@ function uploadMod(req, res) {
 
     var destPath = path.join(CUSTOM_MODS_DIR, filename);
     var metadataPath = getMetadataPath(filename.replace(/\.zip$/i, ''));
+    var existingUpload = hasUploadTarget(filename);
 
     // Check if already exists
-    if (fs.existsSync(destPath) || fs.existsSync(metadataPath)) {
+    if (existingUpload && !overwrite) {
       return sendError(res, req, new AppError('A mod with this filename already exists', {
         status: 409,
         code: 'MOD_ALREADY_EXISTS',
-        cause: 'The uploaded filename or metadata file already exists.',
-        action: 'Rename the zip file or delete the existing custom mod first.',
+        cause: 'The uploaded filename, metadata file, or previously installed folders already exist.',
+        action: 'Choose overwrite in the panel, rename the zip file, or delete the existing custom mod first.',
+        metadata: {
+          canOverwrite: true,
+          filename,
+        },
       }));
     }
 
@@ -1241,7 +1316,10 @@ function uploadMod(req, res) {
       }));
     }
 
-    const preChangeBackup = createModBackup('pre-upload');
+    const preChangeBackup = createModBackup(existingUpload ? 'pre-overwrite' : 'pre-upload');
+    if (existingUpload) {
+      removeUploadTargets(filename);
+    }
 
     fs.writeFileSync(destPath, buffer);
 
@@ -1253,6 +1331,7 @@ function uploadMod(req, res) {
           filename: filename,
           installedFolders: installResult.installedFolders,
           uploadedAt: new Date().toISOString(),
+          overwritten: existingUpload,
         }, null, 2));
       }
 
@@ -1270,6 +1349,7 @@ function uploadMod(req, res) {
         autoInstallFailed: false,
         needsRestart: true,
         installedFolders: installResult.installedFolders,
+        overwritten: existingUpload,
         backup: preChangeBackup,
         clientPack,
       });
@@ -1288,6 +1368,7 @@ function uploadMod(req, res) {
         installError: e.cause || e.message,
         installDetails: e.details || '',
         needsRestart: true,
+        overwritten: existingUpload,
         backup: preChangeBackup,
         clientPack,
       });

@@ -104,6 +104,9 @@ function toPayload(req, error, defaults = {}) {
     ? ''
     : (error && error.details) || defaults.details || '';
   const action = (error && error.action) || defaults.action || DEFAULT_ACTION;
+  const metadata = error && error.expose !== false && error.metadata && typeof error.metadata === 'object'
+    ? error.metadata
+    : undefined;
 
   return {
     status,
@@ -113,6 +116,7 @@ function toPayload(req, error, defaults = {}) {
       cause,
       details,
       action,
+      ...(metadata ? { metadata } : {}),
       requestId: id,
       timestamp: new Date().toISOString(),
     },
