@@ -1,148 +1,280 @@
-#!/bin/bash
-# Puppy Stardew Server - One-Click Update Script
-# 小狗星谷服务器 - 一键更新脚本
-#
-# Usage: ./update.sh [version]
-# 用法：./update.sh [版本号]
-#
-# Examples:
-#   ./update.sh          # Update to latest
-#   ./update.sh v1.0.65  # Update to specific version
+#!/usr/bin/env bash
+# One-click updater for ylty's Stardew Valley co-op panel.
+
+set -Eeuo pipefail
+
+DIRECT_REPO_URL="https://github.com/ylty1516/puppy-stardew-server-updated.git"
+DIRECT_SOURCE_ARCHIVE_URL="https://github.com/ylty1516/puppy-stardew-server-updated/archive/refs/heads/main.tar.gz"
+GITHUB_PROXY_PREFIX="${PUPPY_GITHUB_PROXY_PREFIX:-https://gh.sixyin.com/}"
+REPO_DIR="${PUPPY_STARDEW_DIR:-puppy-stardew-server-updated}"
+BRANCH="${PUPPY_UPDATE_BRANCH:-main}"
+FORCE_LOCAL_OVERWRITE="${PUPPY_UPDATE_FORCE:-false}"
+SKIP_SAVE_BACKUP="${PUPPY_UPDATE_SKIP_SAVE_BACKUP:-false}"
+NO_BUILD="${PUPPY_UPDATE_NO_BUILD:-false}"
+
+if [ "${PUPPY_USE_GITHUB_PROXY:-true}" = "false" ]; then
+  GITHUB_PROXY_PREFIX=""
+fi
+
+if [ -z "${PUPPY_UPDATE_REEXEC:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  SELF_COPY="$(mktemp)"
+  cp "${BASH_SOURCE[0]}" "$SELF_COPY"
+  chmod +x "$SELF_COPY"
+  PUPPY_UPDATE_REEXEC=1 exec bash "$SELF_COPY" "$@"
+fi
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-IMAGE="truemanlive/puppy-stardew-server"
-CONTAINER="puppy-stardew"
-VERSION="${1:-latest}"
+info() { printf '%b\n' "${GREEN}[更新]${NC} $*"; }
+warn() { printf '%b\n' "${YELLOW}[注意]${NC} $*"; }
+error() { printf '%b\n' "${RED}[失败]${NC} $*" >&2; }
+step() { printf '\n%b\n' "${BLUE}==> $*${NC}"; }
+hint() { printf '%b\n' "${CYAN}$*${NC}"; }
+die() { error "$*"; exit 1; }
 
-log_info() { echo -e "${GREEN}[Update]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[Update]${NC} $1"; }
-log_error() { echo -e "${RED}[Update]${NC} $1"; }
-log_step() { echo -e "${BLUE}$1${NC}"; }
+PROJECT_DIR=""
+COMPOSE_CMD=""
+BACKUP_DIR=""
 
-log_step "========================================"
-log_step "  Puppy Stardew Server Updater"
-log_step "  小狗星谷服务器更新工具"
-log_step "========================================"
-echo ""
+proxy_url() {
+  if [ -n "$GITHUB_PROXY_PREFIX" ]; then
+    printf '%s%s\n' "${GITHUB_PROXY_PREFIX%/}/" "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
 
-# Step 1: Check current version
-log_info "Step 1: Checking current version..."
-log_info "步骤 1: 检查当前版本..."
+is_project_dir() {
+  [ -d "$1" ] &&
+    [ -f "$1/docker-compose.yml" ] &&
+    [ -f "$1/.env.example" ] &&
+    [ -d "$1/docker" ]
+}
 
-CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER" 2>/dev/null)
-if [ -n "$CURRENT_IMAGE" ]; then
-    log_info "  Current / 当前: $CURRENT_IMAGE"
-else
-    log_warn "  Container not found / 未找到容器"
-fi
-log_info "  Target / 目标: $IMAGE:$VERSION"
-echo ""
+find_project_dir() {
+  if [ -n "${PUPPY_PROJECT_DIR:-}" ] && is_project_dir "$PUPPY_PROJECT_DIR"; then
+    PROJECT_DIR="$(cd "$PUPPY_PROJECT_DIR" && pwd)"
+    return
+  fi
 
-# Step 2: Backup saves
-log_info "Step 2: Backing up saves..."
-log_info "步骤 2: 备份存档..."
+  if is_project_dir "$PWD"; then
+    PROJECT_DIR="$(pwd)"
+    return
+  fi
 
-BACKUP_DIR="backups"
-mkdir -p "$BACKUP_DIR"
+  for candidate in \
+    "$PWD/$REPO_DIR" \
+    "$HOME/$REPO_DIR" \
+    "/opt/$REPO_DIR" \
+    "/root/$REPO_DIR"; do
+    if is_project_dir "$candidate"; then
+      PROJECT_DIR="$(cd "$candidate" && pwd)"
+      return
+    fi
+  done
 
-if [ -d "data/saves" ]; then
-    BACKUP_FILE="$BACKUP_DIR/saves-pre-update-$(date +%Y%m%d-%H%M%S).tar.gz"
-    tar -czf "$BACKUP_FILE" data/saves/ 2>/dev/null
-    if [ $? -eq 0 ]; then
-        log_info "  ✓ Backup saved to / 备份已保存到: $BACKUP_FILE"
+  die "没有找到项目目录。请先 cd 到 puppy-stardew-server-updated 目录，或设置 PUPPY_PROJECT_DIR=/你的项目路径 后再运行。"
+}
+
+check_tools() {
+  command -v docker >/dev/null 2>&1 || die "未安装 Docker。请先安装 Docker。"
+  docker ps >/dev/null 2>&1 || die "Docker 没有运行，或当前用户没有 Docker 权限。"
+
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+  else
+    die "未安装 Docker Compose。Ubuntu 可执行：sudo apt-get update && sudo apt-get install -y docker-compose-plugin"
+  fi
+
+  command -v tar >/dev/null 2>&1 || die "未找到 tar，无法备份或解压更新包。"
+}
+
+download_file() {
+  url="$1"
+  dest="$2"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL --connect-timeout 15 --retry 2 --retry-delay 2 "$url" -o "$dest"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q --timeout=30 --tries=2 "$url" -O "$dest"
+  else
+    return 1
+  fi
+}
+
+create_backup() {
+  timestamp="$(date +%Y%m%d-%H%M%S)"
+  BACKUP_DIR="$PROJECT_DIR/data/backups/panel-update-$timestamp"
+  mkdir -p "$BACKUP_DIR"
+  chmod 700 "$BACKUP_DIR" 2>/dev/null || true
+
+  for file in ".env" "docker-compose.yml" "docker/config/startup_preferences"; do
+    if [ -f "$PROJECT_DIR/$file" ]; then
+      mkdir -p "$BACKUP_DIR/$(dirname "$file")"
+      cp -a "$PROJECT_DIR/$file" "$BACKUP_DIR/$file"
+    fi
+  done
+
+  if [ "$SKIP_SAVE_BACKUP" != "true" ] && [ -d "$PROJECT_DIR/data/saves" ]; then
+    if tar -czf "$BACKUP_DIR/saves.tar.gz" -C "$PROJECT_DIR" data/saves 2>/dev/null; then
+      info "已备份存档到 $BACKUP_DIR/saves.tar.gz"
     else
-        log_warn "  ⚠ Backup failed, continuing anyway / 备份失败，继续更新"
+      warn "存档备份失败，但不会继续改动存档目录。"
     fi
-else
-    log_warn "  No saves directory found / 未找到存档目录"
-fi
-echo ""
+  fi
 
-# Step 3: Stop server
-log_info "Step 3: Stopping server..."
-log_info "步骤 3: 停止服务器..."
+  info "已备份关键配置到 $BACKUP_DIR"
+}
 
-if docker ps -q -f name="$CONTAINER" | grep -q .; then
-    docker compose down 2>/dev/null || docker-compose down 2>/dev/null || docker stop "$CONTAINER" 2>/dev/null
-    log_info "  ✓ Server stopped / 服务器已停止"
-else
-    log_info "  ✓ Server not running / 服务器未运行"
-fi
-echo ""
+update_with_git() {
+  command -v git >/dev/null 2>&1 || return 1
 
-# Step 4: Pull new image
-log_info "Step 4: Pulling new image ($VERSION)..."
-log_info "步骤 4: 拉取新镜像 ($VERSION)..."
+  cd "$PROJECT_DIR"
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  git remote get-url origin >/dev/null 2>&1 || return 1
 
-docker pull "$IMAGE:$VERSION"
-if [ $? -ne 0 ]; then
-    log_error "  ✗ Failed to pull image / 拉取镜像失败"
-    log_error "  Check your network connection / 请检查网络连接"
-    exit 1
-fi
-log_info "  ✓ Image pulled successfully / 镜像拉取成功"
-echo ""
+  step "拉取 GitHub 最新代码"
+  git fetch --depth 1 origin "$BRANCH"
 
-# Step 5: Update docker-compose.yml if specific version
-if [ "$VERSION" != "latest" ]; then
-    log_info "Step 5: Updating docker-compose.yml..."
-    log_info "步骤 5: 更新 docker-compose.yml..."
-
-    if [ -f "docker-compose.yml" ]; then
-        sed -i "s|image: ${IMAGE}:.*|image: ${IMAGE}:${VERSION}|" docker-compose.yml
-        log_info "  ✓ Updated image tag to $VERSION"
+  dirty_tracked="$(git status --porcelain --untracked-files=no)"
+  if [ -n "$dirty_tracked" ]; then
+    git diff > "$BACKUP_DIR/local-tracked-changes.patch" || true
+    warn "检测到你改过程序文件，差异已备份到 $BACKUP_DIR/local-tracked-changes.patch"
+    if [ "$FORCE_LOCAL_OVERWRITE" != "true" ]; then
+      die "为避免覆盖你的手动改动，已停止更新。如确认要覆盖，执行：PUPPY_UPDATE_FORCE=true bash update.sh"
     fi
-else
-    log_info "Step 5: Using latest tag, no compose file changes needed"
-fi
-echo ""
+  fi
 
-# Step 6: Start server
-log_info "Step 6: Starting server..."
-log_info "步骤 6: 启动服务器..."
+  git reset --hard "origin/$BRANCH"
+}
 
-docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null
-if [ $? -ne 0 ]; then
-    log_error "  ✗ Failed to start server / 启动服务器失败"
+update_with_archive() {
+  step "下载最新版源码包"
+  tmp_archive="$(mktemp)"
+  tmp_dir="$(mktemp -d)"
+  archive_url="$(proxy_url "$DIRECT_SOURCE_ARCHIVE_URL")"
+
+  if ! download_file "$archive_url" "$tmp_archive"; then
+    warn "代理下载失败，尝试 GitHub 原地址..."
+    download_file "$DIRECT_SOURCE_ARCHIVE_URL" "$tmp_archive" || die "下载更新包失败，请检查网络。"
+  fi
+
+  tar -xzf "$tmp_archive" --strip-components=1 -C "$tmp_dir" || die "解压更新包失败。"
+
+  step "覆盖程序文件并保留数据"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude '/.git/' \
+      --exclude '/.env' \
+      --exclude '/data/' \
+      --exclude '/backups/' \
+      --exclude '/secrets/' \
+      "$tmp_dir"/ "$PROJECT_DIR"/
+  else
+    warn "未安装 rsync，改用普通覆盖模式；旧的无用文件不会自动删除。"
+    (cd "$tmp_dir" && tar -cf - \
+      --exclude='.git' \
+      --exclude='.env' \
+      --exclude='data' \
+      --exclude='backups' \
+      --exclude='secrets' \
+      .) | (cd "$PROJECT_DIR" && tar -xf -)
+  fi
+
+  rm -rf "$tmp_archive" "$tmp_dir"
+}
+
+ensure_runtime_files() {
+  cd "$PROJECT_DIR"
+
+  if [ ! -f ".env" ]; then
+    cp .env.example .env
+    warn "没有检测到 .env，已从 .env.example 创建。请确认 Steam 账号密码是否已填写。"
+  fi
+
+  if ! grep -q '^MAX_PLAYERS=' .env 2>/dev/null; then
+    printf '\n# 联机人数上限，默认 8 人\nMAX_PLAYERS=8\n' >> .env
+    info "已给 .env 补充 MAX_PLAYERS=8"
+  fi
+
+  chmod +x ./*.sh 2>/dev/null || true
+  mkdir -p data/{saves,game,steam,logs,backups,custom-mods,panel}
+
+  game_uid="$(stat -c '%u' data/game 2>/dev/null || stat -f '%u' data/game 2>/dev/null || printf '')"
+  if [ "$game_uid" != "1000" ]; then
+    warn "data/game 当前所有者不是 UID 1000。若之后游戏下载报磁盘写入失败，请执行：sudo chown -R 1000:1000 data/"
+  fi
+}
+
+rebuild_and_restart() {
+  if [ "$NO_BUILD" = "true" ]; then
+    warn "已按 PUPPY_UPDATE_NO_BUILD=true 跳过 Docker 重建。"
+    return
+  fi
+
+  cd "$PROJECT_DIR"
+  step "重建并启动服务"
+  $COMPOSE_CMD up -d --build --remove-orphans || {
+    error "Docker Compose 启动失败。"
+    hint "查看日志：$COMPOSE_CMD logs --tail=120"
     exit 1
-fi
-log_info "  ✓ Server started / 服务器已启动"
+  }
+}
 
-# Verify init container completed
-sleep 2
-INIT_EXIT=$(docker inspect --format='{{.State.ExitCode}}' puppy-stardew-init 2>/dev/null)
-if [ "$INIT_EXIT" != "0" ] && [ -n "$INIT_EXIT" ]; then
-    log_warn "  ⚠ Init container exit code: $INIT_EXIT"
-    log_warn "  Check: docker logs puppy-stardew-init"
-fi
-echo ""
+verify_update() {
+  step "检查运行状态"
+  cd "$PROJECT_DIR"
 
-# Step 7: Show new version
-log_info "Step 7: Verifying update..."
-log_info "步骤 7: 验证更新..."
+  if docker ps --format '{{.Names}}' | grep -qx 'puppy-stardew'; then
+    info "主服务器容器正在运行：puppy-stardew"
+  else
+    warn "主服务器容器暂未处于 running 状态，请查看：docker logs puppy-stardew"
+  fi
 
-sleep 3
-NEW_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CONTAINER" 2>/dev/null)
-log_info "  Running / 运行中: $NEW_IMAGE"
-INIT_STATUS=$(docker inspect --format='{{.State.Status}}' puppy-stardew-init 2>/dev/null)
-log_info "  Init container / 初始化容器: $INIT_STATUS"
-echo ""
+  if docker ps --format '{{.Names}}' | grep -qx 'puppy-stardew-manager'; then
+    info "面板管理容器正在运行：puppy-stardew-manager"
+  else
+    warn "面板管理容器暂未处于 running 状态，请查看：docker logs puppy-stardew-manager"
+  fi
 
-# Cleanup old images
-log_info "Cleaning up old images..."
-log_info "清理旧镜像..."
-docker image prune -f --filter "label=maintainer=truemanlive" 2>/dev/null
-echo ""
+  public_ip=""
+  if command -v hostname >/dev/null 2>&1; then
+    public_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
 
-log_step "========================================"
-log_step "  ✅ Update complete! / 更新完成！"
-log_step "========================================"
-log_info ""
-log_info "Check logs / 查看日志: docker logs -f $CONTAINER"
-log_info "Backup location / 备份位置: $BACKUP_FILE"
-log_info ""
+  printf '\n%s\n' "更新完成。"
+  printf '%s\n' "面板地址：http://${public_ip:-你的服务器IP}:18642"
+  printf '%s\n' "备份目录：$BACKUP_DIR"
+  printf '%s\n' "实时日志：docker logs -f puppy-stardew"
+}
+
+main() {
+  printf '%b\n' "${BLUE}========================================${NC}"
+  printf '%b\n' "${BLUE}  ylty 星露谷联机面板 一键更新${NC}"
+  printf '%b\n' "${BLUE}========================================${NC}"
+
+  find_project_dir
+  info "项目目录：$PROJECT_DIR"
+  check_tools
+  create_backup
+
+  if [ -d "$PROJECT_DIR/.git" ] && update_with_git; then
+    info "已通过 git 更新到 origin/$BRANCH"
+  else
+    update_with_archive
+    info "已通过源码压缩包更新到 main 最新版"
+  fi
+
+  ensure_runtime_files
+  rebuild_and_restart
+  verify_update
+}
+
+main "$@"

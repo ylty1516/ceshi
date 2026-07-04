@@ -126,6 +126,11 @@ app.post('/api/game/pause', auth.verifyMiddleware, statusAPI.setManualPause);
 app.get('/api/game/auto-pause', auth.verifyMiddleware, statusAPI.getAutoPause);
 app.post('/api/game/auto-pause', auth.verifyMiddleware, statusAPI.setAutoPause);
 
+// Panel update API
+const updateAPI = require('./api/update');
+app.get('/api/update/status', auth.verifyMiddleware, updateAPI.getUpdateStatus);
+app.post('/api/update', auth.verifyMiddleware, updateAPI.startUpdate);
+
 // Mods API
 const modsAPI = require('./api/mods');
 app.get('/api/public/mods', modsAPI.getPublicMods);

@@ -66,11 +66,11 @@ textarea {
   max-width: 100%;
 }
 
-:where(#content, #topbar, .topbar-right, .card, .stat-card, .stat-info, .detail-item, .section-header, .section-actions, .config-item, .config-value, .save-item, .backup-item, .mod-item, .player-card, .diagnostic-item, .health-item, .public-mod-item, .toast, .modal-dialog) {
+:where(#content, #topbar, .topbar-right, .card, .stat-card, .stat-info, .detail-item, .section-header, .section-actions, .config-item, .config-value, .save-item, .backup-item, .mod-item, .player-card, .diagnostic-item, .health-item, .public-mod-item, .update-panel, .update-status, .toast, .modal-dialog) {
   min-width: 0;
 }
 
-:where(.card, .stat-info, .detail-value, .detail-note, .detail-stats, .diagnostic-body, .health-detail, .health-action, .empty-state, .manual-pause-note, .save-name, .save-meta, .mod-name, .mod-meta, .player-name, .player-info, .config-label, .config-key, .config-help, .backup-status-meta, .backup-status-error, .checksum-line, .toast) {
+:where(.card, .stat-info, .detail-value, .detail-note, .detail-stats, .diagnostic-body, .health-detail, .health-action, .empty-state, .manual-pause-note, .save-name, .save-meta, .mod-name, .mod-meta, .player-name, .player-info, .config-label, .config-key, .config-help, .backup-status-meta, .backup-status-error, .update-status-title, .update-status-meta, .checksum-line, .toast) {
   overflow-wrap: anywhere;
 }
 
@@ -1128,6 +1128,55 @@ textarea {
   display: flex;
   justify-content: flex-end;
   margin-top: 4px;
+}
+
+/* ─── Panel Update ────────────────────────────────────────────── */
+
+.update-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.update-status {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent-info);
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+}
+
+.update-status.running { border-left-color: var(--accent-info); }
+.update-status.succeeded { border-left-color: var(--accent); }
+.update-status.failed { border-left-color: var(--accent-error); }
+.update-status.idle { border-left-color: var(--text-muted); }
+
+.update-status-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.update-status-meta {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.update-log {
+  width: 100%;
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--console-bg);
+  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Toggle switch */

@@ -22,9 +22,11 @@ services:
     environment:
       - PROJECT_DIR=${PWD}
       - COMPOSE_FILE=${PWD}/docker-compose.yml
+      - PUPPY_GITHUB_PROXY_PREFIX=${PUPPY_GITHUB_PROXY_PREFIX:-https://gh.sixyin.com/}
+      - PUPPY_USE_GITHUB_PROXY=${PUPPY_USE_GITHUB_PROXY:-true}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${PWD}:${PWD}:ro
+      - ${PWD}:${PWD}:rw
 
   # Init container: fixes permissions before main server starts
   # 初始化容器：在主服务器启动前修复权限

@@ -1,12 +1,22 @@
 const fs = require('fs');
 const http = require('http');
-const { spawn } = require('child_process');
+const path = require('path');
+const { spawn, spawnSync } = require('child_process');
 
 const PORT = parseInt(process.env.MANAGER_PORT || '18700', 10);
 const PROJECT_DIR = process.env.PROJECT_DIR || '/workspace';
 const COMPOSE_FILE = process.env.COMPOSE_FILE || `${PROJECT_DIR}/docker-compose.yml`;
 const DEFAULT_ENV_FILE = `${PROJECT_DIR}/.env`;
 const RUNTIME_ENV_FILE = `${PROJECT_DIR}/data/panel/runtime.env`;
+const PANEL_DATA_DIR = `${PROJECT_DIR}/data/panel`;
+const UPDATE_STATUS_FILE = `${PANEL_DATA_DIR}/update-status.json`;
+const UPDATE_LOG_FILE = `${PANEL_DATA_DIR}/update.log`;
+const UPDATE_RUNNER_FILE = `${PANEL_DATA_DIR}/update-runner.sh`;
+const UPDATE_CONTAINER = process.env.UPDATE_CONTAINER || 'puppy-stardew-panel-updater';
+const UPDATE_IMAGE = process.env.UPDATE_IMAGE || 'puppy-stardew-manager:local';
+const UPDATE_BRANCH = process.env.PUPPY_UPDATE_BRANCH || 'main';
+const DIRECT_SOURCE_ARCHIVE_URL = 'https://github.com/ylty1516/puppy-stardew-server-updated/archive/refs/heads/main.tar.gz';
+const GITHUB_PROXY_PREFIX = process.env.PUPPY_GITHUB_PROXY_PREFIX || 'https://gh.sixyin.com/';
 const ALLOWED_SERVICES = new Set(['stardew-server']);
 const SERVICE_CONTAINERS = {
   'stardew-server': 'puppy-stardew',
@@ -15,6 +25,365 @@ const SERVICE_CONTAINERS = {
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function proxyUrl(url) {
+  if (process.env.PUPPY_USE_GITHUB_PROXY === 'false' || !GITHUB_PROXY_PREFIX) {
+    return url;
+  }
+
+  return `${GITHUB_PROXY_PREFIX.replace(/\/+$/, '')}/${url}`;
+}
+
+function ensurePanelDataDir() {
+  fs.mkdirSync(PANEL_DATA_DIR, { recursive: true });
+}
+
+function readTextTail(filePath, maxBytes = 32000) {
+  try {
+    if (!fs.existsSync(filePath)) return '';
+    const stat = fs.statSync(filePath);
+    const bytesToRead = Math.min(stat.size, maxBytes);
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const buffer = Buffer.alloc(bytesToRead);
+      const start = Math.max(0, stat.size - bytesToRead);
+      const bytesRead = fs.readSync(fd, buffer, 0, bytesToRead, start);
+      return buffer.subarray(0, bytesRead).toString('utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (error) {
+    return '';
+  }
+}
+
+function getUpdaterContainerState() {
+  const result = spawnSync('docker', [
+    'inspect',
+    '--format',
+    '{{.State.Running}} {{.State.ExitCode}} {{.State.Status}}',
+    UPDATE_CONTAINER,
+  ], {
+    encoding: 'utf8',
+    timeout: 3000,
+  });
+
+  if (result.status !== 0) {
+    return { exists: false, running: false, status: 'missing', exitCode: null };
+  }
+
+  const [running, exitCode, status] = result.stdout.trim().split(/\s+/);
+  return {
+    exists: true,
+    running: running === 'true',
+    status: status || 'unknown',
+    exitCode: Number.isFinite(parseInt(exitCode, 10)) ? parseInt(exitCode, 10) : null,
+  };
+}
+
+function readUpdateStatus() {
+  let status = {
+    state: 'idle',
+    phase: 'idle',
+    message: 'No update has been started yet.',
+    startedAt: '',
+    updatedAt: '',
+    completedAt: '',
+    backupDir: '',
+    logFile: UPDATE_LOG_FILE,
+    exitCode: 0,
+  };
+
+  try {
+    if (fs.existsSync(UPDATE_STATUS_FILE)) {
+      status = {
+        ...status,
+        ...JSON.parse(fs.readFileSync(UPDATE_STATUS_FILE, 'utf8')),
+      };
+    }
+  } catch (error) {
+    status = {
+      ...status,
+      state: 'unknown',
+      phase: 'status_read_failed',
+      message: error.message || 'Failed to read update status.',
+    };
+  }
+
+  const container = getUpdaterContainerState();
+  if (status.state === 'running' && (!container.exists || !container.running)) {
+    status = {
+      ...status,
+      state: 'failed',
+      message: container.exists
+        ? 'The updater container exited before reporting success.'
+        : 'The updater container is missing while the update status is still running.',
+      exitCode: container.exitCode || 1,
+      updatedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    ...status,
+    running: status.state === 'running',
+    manager: {
+      projectDir: PROJECT_DIR,
+      composeFile: COMPOSE_FILE,
+      updateContainer: UPDATE_CONTAINER,
+      updateImage: UPDATE_IMAGE,
+      container,
+    },
+    logTail: readTextTail(UPDATE_LOG_FILE),
+  };
+}
+
+function writeUpdateStatus(status) {
+  ensurePanelDataDir();
+  fs.writeFileSync(UPDATE_STATUS_FILE, JSON.stringify({
+    logFile: UPDATE_LOG_FILE,
+    ...status,
+    updatedAt: new Date().toISOString(),
+  }, null, 2));
+}
+
+function buildUpdaterScript(options = {}) {
+  const force = options.force === true ? 'true' : 'false';
+  const skipSaveBackup = options.skipSaveBackup === true ? 'true' : 'false';
+  const noBuild = options.noBuild === true ? 'true' : 'false';
+  const proxiedArchiveUrl = proxyUrl(DIRECT_SOURCE_ARCHIVE_URL);
+
+  return `#!/bin/sh
+set -eu
+
+PROJECT_DIR=${shellQuote(PROJECT_DIR)}
+COMPOSE_FILE=${shellQuote(COMPOSE_FILE)}
+STATUS_FILE=${shellQuote(UPDATE_STATUS_FILE)}
+LOG_FILE=${shellQuote(UPDATE_LOG_FILE)}
+BRANCH=${shellQuote(UPDATE_BRANCH)}
+DIRECT_SOURCE_ARCHIVE_URL=${shellQuote(DIRECT_SOURCE_ARCHIVE_URL)}
+PROXIED_SOURCE_ARCHIVE_URL=${shellQuote(proxiedArchiveUrl)}
+FORCE_LOCAL_OVERWRITE=${shellQuote(force)}
+SKIP_SAVE_BACKUP=${shellQuote(skipSaveBackup)}
+NO_BUILD=${shellQuote(noBuild)}
+STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+BACKUP_DIR="$PROJECT_DIR/data/backups/panel-update-$(date '+%Y%m%d-%H%M%S')"
+LAST_PHASE="starting"
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g'
+}
+
+write_status() {
+  state="$1"
+  phase="$2"
+  message="$3"
+  exit_code="$4"
+  now="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  completed=""
+  if [ "$state" != "running" ]; then
+    completed="$now"
+  fi
+  mkdir -p "$(dirname "$STATUS_FILE")"
+  cat > "$STATUS_FILE" <<JSON
+{
+  "state": "$state",
+  "phase": "$phase",
+  "message": "$(json_escape "$message")",
+  "startedAt": "$STARTED_AT",
+  "updatedAt": "$now",
+  "completedAt": "$completed",
+  "backupDir": "$(json_escape "$BACKUP_DIR")",
+  "logFile": "$(json_escape "$LOG_FILE")",
+  "exitCode": $exit_code
+}
+JSON
+}
+
+set_phase() {
+  LAST_PHASE="$1"
+  write_status "running" "$1" "$2" 0
+  printf '\\n[%s] %s\\n' "$(date '+%F %T')" "$2"
+}
+
+on_exit() {
+  code="$?"
+  if [ "$code" -ne 0 ]; then
+    write_status "failed" "$LAST_PHASE" "更新失败，请查看日志里的准确原因。" "$code"
+  fi
+}
+trap on_exit EXIT
+
+mkdir -p "$PROJECT_DIR/data/panel" "$PROJECT_DIR/data/backups"
+: > "$LOG_FILE"
+exec >> "$LOG_FILE" 2>&1
+
+cd "$PROJECT_DIR"
+export PWD="$PROJECT_DIR"
+set_phase "backup" "备份关键配置和存档"
+mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR" 2>/dev/null || true
+for file in .env docker-compose.yml docker/config/startup_preferences; do
+  if [ -f "$file" ]; then
+    mkdir -p "$BACKUP_DIR/$(dirname "$file")"
+    cp -a "$file" "$BACKUP_DIR/$file"
+  fi
+done
+if [ "$SKIP_SAVE_BACKUP" != "true" ] && [ -d data/saves ]; then
+  tar -czf "$BACKUP_DIR/saves.tar.gz" data/saves || true
+fi
+
+download_file() {
+  url="$1"
+  dest="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL --connect-timeout 15 --retry 2 --retry-delay 2 "$url" -o "$dest"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q --timeout=30 --tries=2 "$url" -O "$dest"
+  else
+    return 1
+  fi
+}
+
+set_phase "download" "拉取 GitHub 最新代码"
+if [ -d .git ] && command -v git >/dev/null 2>&1; then
+  git config --global --add safe.directory "$PROJECT_DIR" 2>/dev/null || true
+  git fetch --depth 1 origin "$BRANCH"
+  dirty="$(git status --porcelain --untracked-files=no)"
+  if [ -n "$dirty" ]; then
+    git diff > "$BACKUP_DIR/local-tracked-changes.patch" || true
+    if [ "$FORCE_LOCAL_OVERWRITE" != "true" ]; then
+      echo "检测到服务器上有手动修改过的程序文件："
+      printf '%s\\n' "$dirty"
+      echo "差异已备份到 $BACKUP_DIR/local-tracked-changes.patch"
+      echo "为避免覆盖你的手动改动，已停止更新。"
+      exit 30
+    fi
+  fi
+  git reset --hard "origin/$BRANCH"
+else
+  tmp_archive="$(mktemp)"
+  tmp_dir="$(mktemp -d)"
+  if ! download_file "$PROXIED_SOURCE_ARCHIVE_URL" "$tmp_archive"; then
+    echo "代理压缩包下载失败，尝试 GitHub 原地址。"
+    download_file "$DIRECT_SOURCE_ARCHIVE_URL" "$tmp_archive"
+  fi
+  tar -xzf "$tmp_archive" --strip-components=1 -C "$tmp_dir"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \\
+      --exclude '/.git/' \\
+      --exclude '/.env' \\
+      --exclude '/data/' \\
+      --exclude '/backups/' \\
+      --exclude '/secrets/' \\
+      "$tmp_dir"/ "$PROJECT_DIR"/
+  else
+    (cd "$tmp_dir" && tar -cf - \\
+      --exclude='.git' \\
+      --exclude='.env' \\
+      --exclude='data' \\
+      --exclude='backups' \\
+      --exclude='secrets' \\
+      .) | (cd "$PROJECT_DIR" && tar -xf -)
+  fi
+  rm -rf "$tmp_archive" "$tmp_dir"
+fi
+
+set_phase "prepare" "补齐运行配置"
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "未检测到 .env，已从 .env.example 创建。请检查 Steam 账号密码。"
+fi
+if ! grep -q '^MAX_PLAYERS=' .env 2>/dev/null; then
+  printf '\\n# 联机人数上限，默认 8 人\\nMAX_PLAYERS=8\\n' >> .env
+fi
+chmod +x ./*.sh 2>/dev/null || true
+mkdir -p data/saves data/game data/steam data/logs data/backups data/custom-mods data/panel
+
+set_phase "rebuild" "重建并重启 Docker 服务"
+if [ "$NO_BUILD" != "true" ]; then
+  docker compose -f "$COMPOSE_FILE" --project-directory "$PROJECT_DIR" up -d --build --remove-orphans
+else
+  echo "已按配置跳过 Docker 重建。"
+fi
+
+write_status "succeeded" "complete" "更新完成，面板和服务已重建。" 0
+trap - EXIT
+`;
+}
+
+function startUpdate(options = {}) {
+  const current = readUpdateStatus();
+  if (current.running) {
+    return {
+      alreadyRunning: true,
+      status: current,
+    };
+  }
+
+  ensurePanelDataDir();
+  fs.writeFileSync(UPDATE_RUNNER_FILE, buildUpdaterScript(options), { mode: 0o700 });
+  try {
+    fs.chmodSync(UPDATE_RUNNER_FILE, 0o700);
+  } catch (error) {}
+
+  writeUpdateStatus({
+    state: 'running',
+    phase: 'queued',
+    message: '更新任务已提交，正在启动 updater 容器。',
+    startedAt: new Date().toISOString(),
+    completedAt: '',
+    backupDir: '',
+    exitCode: 0,
+  });
+
+  spawnSync('docker', ['rm', '-f', UPDATE_CONTAINER], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+
+  const run = spawnSync('docker', [
+    'run',
+    '-d',
+    '--name',
+    UPDATE_CONTAINER,
+    '-v',
+    '/var/run/docker.sock:/var/run/docker.sock',
+    '-v',
+    `${PROJECT_DIR}:${PROJECT_DIR}:rw`,
+    '-w',
+    PROJECT_DIR,
+    UPDATE_IMAGE,
+    'sh',
+    UPDATE_RUNNER_FILE,
+  ], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+
+  if (run.error || run.status !== 0) {
+    writeUpdateStatus({
+      state: 'failed',
+      phase: 'start_container',
+      message: '启动 updater 容器失败。',
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      backupDir: '',
+      exitCode: run.status || 1,
+    });
+    throw new Error([run.error && run.error.message, run.stderr, run.stdout].filter(Boolean).join('\n') || 'Failed to start updater container');
+  }
+
+  return {
+    alreadyRunning: false,
+    containerId: run.stdout.trim(),
+    status: readUpdateStatus(),
+  };
 }
 
 function readJson(req) {
@@ -86,6 +455,7 @@ function buildComposeEnv() {
     ...process.env,
     ...parseEnvFile(DEFAULT_ENV_FILE),
     ...parseEnvFile(RUNTIME_ENV_FILE),
+    PWD: PROJECT_DIR,
   };
 }
 
@@ -109,6 +479,34 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 202, { success: true, service, action: 'recreate' });
     } catch (error) {
       sendJson(res, 500, { error: error.message || 'Failed to schedule recreate' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/update/status') {
+    sendJson(res, 200, readUpdateStatus());
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/update') {
+    try {
+      const body = await readJson(req);
+      const result = startUpdate({
+        force: body && body.force === true,
+        skipSaveBackup: body && body.skipSaveBackup === true,
+        noBuild: body && body.noBuild === true,
+      });
+
+      sendJson(res, result.alreadyRunning ? 200 : 202, {
+        success: true,
+        action: 'update',
+        ...result,
+      });
+    } catch (error) {
+      sendJson(res, 500, {
+        error: error.message || 'Failed to start update',
+        status: readUpdateStatus(),
+      });
     }
     return;
   }

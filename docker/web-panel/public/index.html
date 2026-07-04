@@ -429,6 +429,10 @@
                 <svg class="icon"><use href="#icon-saves"></use></svg>
                 <span data-i18n="dash.backup">Backup Now</span>
               </button>
+              <button class="btn btn-primary" type="button" onclick="navigateTo('config'); setTimeout(loadPanelUpdateStatus, 0)">
+                <svg class="icon"><use href="#icon-refresh"></use></svg>
+                <span data-i18n="dash.updatePanel">Update Panel</span>
+              </button>
               <button class="btn btn-warning" id="manualPauseBtn" type="button" onclick="toggleManualPause()" disabled>
                 <svg class="icon"><use href="#icon-clock"></use></svg>
                 <span id="manualPauseBtnText" data-i18n="dash.pauseTime">Pause Time</span>
@@ -566,6 +570,28 @@
 
         <section id="page-config" class="page">
           <div id="configContainer"></div>
+          <div class="card card-spaced">
+            <div class="section-header">
+              <h3 data-i18n="update.title">Panel Update</h3>
+              <div class="section-actions">
+                <button class="btn btn-success btn-sm" id="panelUpdateBtn" type="button" onclick="startPanelUpdate()">
+                  <svg class="icon"><use href="#icon-refresh"></use></svg>
+                  <span id="panelUpdateBtnText" data-i18n="update.button">One-click Update</span>
+                </button>
+                <button class="btn btn-sm btn-muted" type="button" onclick="loadPanelUpdateStatus()">
+                  <svg class="icon"><use href="#icon-refresh"></use></svg>
+                  <span data-i18n="update.refresh">Refresh Status</span>
+                </button>
+              </div>
+            </div>
+            <div class="update-panel">
+              <div id="panelUpdateStatus" class="update-status idle">
+                <div class="update-status-title" data-i18n="update.idle">No update running</div>
+                <div class="update-status-meta" data-i18n="update.hint">The panel will back up key config, pull the latest code, rebuild Docker, and keep your data directory.</div>
+              </div>
+              <pre id="panelUpdateLog" class="update-log" style="display:none"></pre>
+            </div>
+          </div>
           <div class="card card-spaced">
             <div class="section-header">
               <h3 data-i18n="config.password">Change Panel Password</h3>

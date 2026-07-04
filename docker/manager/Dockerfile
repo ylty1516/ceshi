@@ -1,6 +1,6 @@
 FROM docker:27-cli
 
-RUN apk add --no-cache nodejs docker-cli-compose
+RUN apk add --no-cache bash curl docker-cli-compose git nodejs rsync tar
 
 WORKDIR /app
 

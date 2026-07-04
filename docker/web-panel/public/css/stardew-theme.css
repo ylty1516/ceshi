@@ -217,6 +217,7 @@ body::after {
 .backup-item,
 .mod-item,
 .backup-status,
+.update-status,
 .diagnostic-item,
 .diagnostics-summary,
 .validation-list {
@@ -235,6 +236,7 @@ body::after {
 :root[data-theme='light'] .backup-item,
 :root[data-theme='light'] .mod-item,
 :root[data-theme='light'] .backup-status,
+:root[data-theme='light'] .update-status,
 :root[data-theme='light'] .diagnostic-item,
 :root[data-theme='light'] .diagnostics-summary,
 :root[data-theme='light'] .validation-list {
@@ -257,6 +259,7 @@ body::after {
 .player-name,
 .save-name,
 .mod-name,
+.update-status-title,
 .diagnostic-title {
   color: var(--text-primary);
 }
@@ -266,6 +269,7 @@ body::after {
 :root[data-theme='light'] .player-name,
 :root[data-theme='light'] .save-name,
 :root[data-theme='light'] .mod-name,
+:root[data-theme='light'] .update-status-title,
 :root[data-theme='light'] .diagnostic-title {
   color: #392514;
 }
@@ -479,6 +483,7 @@ body::after {
 
 .log-output,
 .terminal-output,
+.update-log,
 .diagnostic-evidence {
   border: 2px solid rgba(58, 35, 16, 0.72);
   border-radius: 8px;
@@ -499,6 +504,7 @@ body::after {
 .mod-meta,
 .save-meta,
 .backup-status-meta,
+.update-status-meta,
 .login-logo p,
 .auth-copy p,
 .form-group label {

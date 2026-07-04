@@ -30,11 +30,14 @@ let playersInterval = null;
 let lastStatusData = null;
 let backupStatusPoll = null;
 let lastBackupStatus = null;
+let panelUpdatePoll = null;
+let lastPanelUpdateStatus = null;
 
 const STATUS_REFRESH_MS = 20000;
 const PLAYERS_REFRESH_MS = 20000;
 const BACKUP_STATUS_POLL_MS = 2000;
 const CONTAINER_RECONNECT_POLL_MS = 2000;
+const PANEL_UPDATE_POLL_MS = 3000;
 
 function detectTheme() {
   const saved = localStorage.getItem('panel_theme');
@@ -115,7 +118,7 @@ const translations = {
     'timePause.source.game': 'SMAPI 报告 Game1.paused=true，但没有匹配到面板暂停来源。',
     'timePause.source.inferred': '面板从日志或控制文件推断为暂停，等待 SMAPI 状态桥确认。',
     'timePause.reason': '原因：{reason}',
-    'dash.viewLogs': '查看日志', 'dash.restart': '重启服务器', 'dash.backup': '立即备份',
+    'dash.viewLogs': '查看日志', 'dash.restart': '重启服务器', 'dash.backup': '立即备份', 'dash.updatePanel': '更新面板',
     'dash.pauseTime': '暂停时间', 'dash.resumeTime': '恢复时间',
     'dash.enableAutoPause': '开启自动暂停', 'dash.disableAutoPause': '关闭自动暂停',
     'dash.pauseHint': '手动暂停会冻结游戏内时间，所有在线玩家都会停在当前时间，直到你恢复。',
@@ -201,6 +204,32 @@ const translations = {
     'config.help.PUBLIC_IP': '公网联机时填写你的公网 IP 或域名。留空时仪表盘会显示当前访问面板所用的地址，或容器检测到的内网 IP。',
     'config.help.STEAM_USERNAME': '非 Docker Secrets 模式下可直接修改 Steam 登录账号。保存后重启容器生效。',
     'config.help.STEAM_PASSWORD': '可在这里写入新的 Steam 密码。出于安全原因不会回显旧密码；留空表示保持现有密码不变。',
+    'update.title': '面板一键更新',
+    'update.button': '一键更新',
+    'update.runningButton': '更新中',
+    'update.refresh': '刷新状态',
+    'update.idle': '当前没有更新任务',
+    'update.hint': '会先备份关键配置和存档，再拉取最新版代码并重建 Docker，data 目录会保留。',
+    'update.confirm': '确定现在更新面板吗？更新过程中面板可能短暂断开，稍等后会自动恢复。',
+    'update.started': '更新任务已开始，请不要反复点击。',
+    'update.startFail': '启动更新失败',
+    'update.statusFail': '读取更新状态失败',
+    'update.reconnecting': '更新过程中面板暂时断开，正在等待服务恢复。',
+    'update.state.idle': '未开始',
+    'update.state.running': '更新中',
+    'update.state.succeeded': '更新完成',
+    'update.state.failed': '更新失败',
+    'update.state.unknown': '状态未知',
+    'update.phase.idle': '空闲',
+    'update.phase.queued': '排队中',
+    'update.phase.backup': '备份中',
+    'update.phase.download': '拉取代码',
+    'update.phase.prepare': '准备配置',
+    'update.phase.rebuild': '重建服务',
+    'update.phase.complete': '完成',
+    'update.meta': '阶段：{phase} · 更新时间：{time}',
+    'update.backupDir': '备份目录：{path}',
+    'update.exitCode': '退出码：{code}',
     'login.subtitle': '服务器管理面板', 'login.password': '密码', 'login.button': '登录',
     'setup.title': '设置管理密码', 'setup.subtitle': '首次使用，请设置您的管理密码',
     'setup.password': '设置密码', 'setup.confirm': '确认密码', 'setup.button': '开始使用',
@@ -291,7 +320,7 @@ const translations = {
     'timePause.source.game': 'SMAPI reports Game1.paused=true, but no panel pause owner claimed it.',
     'timePause.source.inferred': 'The panel inferred a pause from logs or control files while waiting for the state bridge.',
     'timePause.reason': 'Reason: {reason}',
-    'dash.viewLogs': 'View Logs', 'dash.restart': 'Restart Server', 'dash.backup': 'Backup Now',
+    'dash.viewLogs': 'View Logs', 'dash.restart': 'Restart Server', 'dash.backup': 'Backup Now', 'dash.updatePanel': 'Update Panel',
     'dash.pauseTime': 'Pause Time', 'dash.resumeTime': 'Resume Time',
     'dash.enableAutoPause': 'Enable Auto Pause', 'dash.disableAutoPause': 'Disable Auto Pause',
     'dash.pauseHint': 'Manual pause freezes in-game time for all connected players until you resume it.',
@@ -377,6 +406,32 @@ const translations = {
     'config.help.PUBLIC_IP': 'Enter your public IP or domain for internet play. Leave it empty to show the current panel host or the container-detected LAN IP instead.',
     'config.help.STEAM_USERNAME': 'In non-Secrets mode, you can update the Steam login account here. Takes effect after a container restart.',
     'config.help.STEAM_PASSWORD': 'Write a new Steam password here. The current password is never shown back; leave it empty to keep the existing password.',
+    'update.title': 'Panel Update',
+    'update.button': 'One-click Update',
+    'update.runningButton': 'Updating',
+    'update.refresh': 'Refresh Status',
+    'update.idle': 'No update running',
+    'update.hint': 'Backs up key config and saves, pulls the latest code, rebuilds Docker, and keeps the data directory.',
+    'update.confirm': 'Update the panel now? The panel may disconnect briefly and reconnect after the rebuild.',
+    'update.started': 'Update started. Avoid repeated clicks.',
+    'update.startFail': 'Failed to start update',
+    'update.statusFail': 'Failed to read update status',
+    'update.reconnecting': 'The panel disconnected during update. Waiting for service recovery.',
+    'update.state.idle': 'Idle',
+    'update.state.running': 'Updating',
+    'update.state.succeeded': 'Updated',
+    'update.state.failed': 'Failed',
+    'update.state.unknown': 'Unknown',
+    'update.phase.idle': 'Idle',
+    'update.phase.queued': 'Queued',
+    'update.phase.backup': 'Backing up',
+    'update.phase.download': 'Pulling code',
+    'update.phase.prepare': 'Preparing config',
+    'update.phase.rebuild': 'Rebuilding services',
+    'update.phase.complete': 'Complete',
+    'update.meta': 'Phase: {phase} · Updated: {time}',
+    'update.backupDir': 'Backup: {path}',
+    'update.exitCode': 'Exit code: {code}',
     'login.subtitle': 'Server Management Panel', 'login.password': 'Password', 'login.button': 'Login',
     'setup.title': 'Set Admin Password', 'setup.subtitle': 'First time setup - please create your admin password',
     'setup.password': 'Password', 'setup.confirm': 'Confirm Password', 'setup.button': 'Get Started',
@@ -484,6 +539,9 @@ function applyTranslations() {
   if (lastBackupStatus) {
     renderBackupStatus(lastBackupStatus);
   }
+  if (lastPanelUpdateStatus) {
+    renderPanelUpdateStatus(lastPanelUpdateStatus);
+  }
 }
 
 // ─── Init ────────────────────────────────────────────────────────
@@ -494,6 +552,7 @@ function init() {
   setupWebSocket();
   loadDashboard();
   loadBackupStatus();
+  loadPanelUpdateStatus(true);
 
   // Logout
   document.getElementById('logoutBtn').onclick = () => {
@@ -580,6 +639,7 @@ function reloadCurrentPage() {
       break;
     case 'config':
       loadConfig();
+      loadPanelUpdateStatus(true);
       break;
     case 'mods':
       loadMods();
@@ -649,7 +709,7 @@ function navigateTo(page) {
     case 'diagnostics': loadDiagnostics(); break;
     case 'players': startPlayersAutoRefresh(); break;
     case 'saves': loadSaves(); break;
-    case 'config': loadConfig(); break;
+    case 'config': loadConfig(); loadPanelUpdateStatus(true); break;
     case 'mods': loadMods(); break;
   }
 }
@@ -1592,6 +1652,153 @@ async function loadConfig() {
   saveBtn.className = 'config-save-row';
   saveBtn.innerHTML = '<button class="btn btn-success" id="saveConfigBtn" onclick="saveConfig()" style="display:none">' + t('config.saveChanges') + '</button>';
   container.appendChild(saveBtn);
+}
+
+function getPanelUpdateState(status) {
+  if (!status || typeof status !== 'object') return 'idle';
+  return status.state || (status.running ? 'running' : 'idle');
+}
+
+function getPanelUpdateTone(state) {
+  if (state === 'running') return 'running';
+  if (state === 'succeeded') return 'succeeded';
+  if (state === 'failed') return 'failed';
+  return 'idle';
+}
+
+function getPanelUpdatePhaseLabel(phase) {
+  return t('update.phase.' + (phase || 'idle'));
+}
+
+function renderPanelUpdateStatus(status) {
+  lastPanelUpdateStatus = status || null;
+  const statusEl = document.getElementById('panelUpdateStatus');
+  const logEl = document.getElementById('panelUpdateLog');
+  const button = document.getElementById('panelUpdateBtn');
+  const buttonText = document.getElementById('panelUpdateBtnText');
+  if (!statusEl) return;
+
+  const state = getPanelUpdateState(status);
+  const phase = status?.phase || 'idle';
+  const tone = getPanelUpdateTone(state);
+  const title = t('update.state.' + state);
+  const message = status?.message || (state === 'idle' ? t('update.hint') : '');
+  const updatedAt = status?.updatedAt ? formatBackupTimestamp(status.updatedAt) : '--';
+  const meta = [
+    tf('update.meta', {
+      phase: getPanelUpdatePhaseLabel(phase),
+      time: updatedAt,
+    }),
+  ];
+
+  if (status?.backupDir) {
+    meta.push(tf('update.backupDir', { path: status.backupDir }));
+  }
+  if (state === 'failed' && typeof status.exitCode !== 'undefined') {
+    meta.push(tf('update.exitCode', { code: String(status.exitCode) }));
+  }
+  if (status?.managerError) {
+    meta.push(status.managerError);
+  }
+
+  statusEl.className = 'update-status ' + tone;
+  statusEl.innerHTML =
+    '<div class="update-status-title">' + escapeHtml(title) + '</div>' +
+    '<div class="update-status-meta">' + escapeHtml(message) + '</div>' +
+    '<div class="update-status-meta">' + escapeHtml(meta.join(' · ')) + '</div>';
+
+  if (logEl) {
+    const logTail = status?.logTail || '';
+    logEl.style.display = logTail ? '' : 'none';
+    logEl.textContent = logTail;
+    if (logTail) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  const running = state === 'running';
+  if (button) {
+    button.disabled = running;
+  }
+  if (buttonText) {
+    buttonText.textContent = running ? t('update.runningButton') : t('update.button');
+  }
+
+  if (running) {
+    startPanelUpdatePolling();
+  } else {
+    stopPanelUpdatePolling();
+  }
+}
+
+async function loadPanelUpdateStatus(silent) {
+  try {
+    const data = await API.get('/api/update/status');
+    if (!data) return;
+    if (data.error) {
+      const failedStatus = {
+        state: 'unknown',
+        phase: 'status_read_failed',
+        message: formatApiError(data, t('update.statusFail')),
+        updatedAt: new Date().toISOString(),
+        logTail: data.logTail || '',
+      };
+      renderPanelUpdateStatus(failedStatus);
+      if (!silent) {
+        showToast(formatApiError(data, t('update.statusFail')), 'error', 7000);
+      }
+      return;
+    }
+    renderPanelUpdateStatus(data.status || data);
+  } catch (error) {
+    if (!silent) {
+      showToast(t('update.reconnecting'), 'warn', 5000);
+    }
+    startPanelUpdatePolling();
+  }
+}
+
+function startPanelUpdatePolling() {
+  if (panelUpdatePoll) return;
+  panelUpdatePoll = setInterval(() => {
+    loadPanelUpdateStatus(true);
+  }, PANEL_UPDATE_POLL_MS);
+}
+
+function stopPanelUpdatePolling() {
+  if (panelUpdatePoll) {
+    clearInterval(panelUpdatePoll);
+    panelUpdatePoll = null;
+  }
+}
+
+async function startPanelUpdate() {
+  if (!confirm(t('update.confirm'))) return;
+
+  const button = document.getElementById('panelUpdateBtn');
+  if (button) {
+    button.disabled = true;
+  }
+  showToast(t('update.started'), 'warn', 5000);
+
+  try {
+    const data = await API.post('/api/update', {});
+    if (data && data.success) {
+      renderPanelUpdateStatus(data.status || data);
+      startPanelUpdatePolling();
+      return;
+    }
+
+    showToast(formatApiError(data, t('update.startFail')), 'error', 9000);
+  } catch (error) {
+    showToast(t('update.reconnecting'), 'warn', 6000);
+    startPanelUpdatePolling();
+    return;
+  }
+
+  if (button) {
+    button.disabled = false;
+  }
 }
 
 function configChanged() {
