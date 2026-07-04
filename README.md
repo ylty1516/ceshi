@@ -270,6 +270,20 @@ git pull
 docker compose up -d --build
 ```
 
+如果旧版面板还没有 Web 一键更新按钮，或者想直接安全重装/修复安装，可以复制这一行运行：
+
+```bash
+(curl -fsSL https://gh.sixyin.com/https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh || curl -fsSL https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh) | bash
+```
+
+这条命令会下载最新版更新脚本，自动备份 `.env`、`docker-compose.yml`、启动偏好和存档，然后拉取最新代码并重建 Docker 服务。`data/`、`secrets/` 和玩家上传内容会保留，不会当成全新安装直接清空。
+
+如果项目目录不在默认位置，先进入项目目录再执行：
+
+```bash
+cd /你的项目目录 && (curl -fsSL https://gh.sixyin.com/https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh || curl -fsSL https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh) | bash
+```
+
 完成这次以后，后续更新就可以直接在 Web 面板里点按钮，不用再进 SSH。
 
 ## 2核2G 小服务器优化
