@@ -1774,6 +1774,11 @@ textarea {
   line-height: 1.5;
 }
 
+.public-install-note {
+  margin-top: 8px;
+  max-width: 680px;
+}
+
 .public-eyebrow,
 .public-meta {
   color: var(--accent);
@@ -1837,6 +1842,8 @@ textarea {
   font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   font-size: 11px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .empty-icon {

@@ -10,6 +10,7 @@ const config = require('../server');
 const { AppError, commandError, sendError } = require('../errors');
 const { MAX_PLAYERS, getVisiblePlayers, readGameStateBridge } = require('./game-state');
 const { buildWorldState, deriveOrchestration } = require('./world-state');
+const modsAPI = require('./mods');
 
 // Status history (in-memory, capped for small 2c/2g servers)
 const statusHistory = [];
@@ -131,7 +132,28 @@ function extractLogHints(lines = readRecentLogLines(500)) {
   return { day, players: connectedPlayers.size, paused };
 }
 
+function getClientModJoinHint() {
+  try {
+    const clientPack = modsAPI.getClientPackStatus();
+    if (!clientPack || !clientPack.modCount) {
+      return '';
+    }
+
+    const fingerprint = clientPack.fingerprint
+      ? ` Pack fingerprint: ${clientPack.fingerprint.slice(0, 12)}.`
+      : '';
+    const availability = clientPack.available
+      ? 'Ask the player to install /player-mods -> stardew-client-mods.zip before joining.'
+      : 'Rebuild/download the player mod pack from the Mods page, then ask the player to install it before joining.';
+
+    return ` This server has ${clientPack.modCount} client-required mod(s). ${availability}${fingerprint}`;
+  } catch (error) {
+    return '';
+  }
+}
+
 function describeJoinHandshake(lines = readRecentLogLines(500)) {
+  const clientModHint = getClientModJoinHint();
   const state = {
     stage: 'none',
     connectionId: '',
@@ -147,7 +169,7 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
       state.connectionId = match[1];
       state.line = line;
       state.label = 'Server sent the farmhand list';
-      state.action = 'If the player still sees no free slot, the next check is whether the list is empty or the client did not request a farmhand after receiving it.';
+      state.action = `If the player still sees no free slot, check whether the client requested a farmhand after receiving the list.${clientModHint}`;
       continue;
     }
 
@@ -171,7 +193,7 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
       state.stage = 'rejected_no_slots';
       state.line = line;
       state.label = 'Server reported no free farmhand slot';
-      state.action = 'Check playerLimit, enableFarmhandCreation, cabins, and whether the loaded save was opened through a true co-op host flow.';
+      state.action = `Check playerLimit, enableFarmhandCreation, cabins, and whether the loaded save was opened through a true co-op host flow. If those are correct, the next most likely cause is a client/server mod-set mismatch.${clientModHint}`;
       continue;
     }
 
@@ -179,7 +201,7 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
       state.stage = 'disconnected_after_farmhand_list';
       state.line = line;
       state.label = 'Player disconnected after the farmhand list was sent';
-      state.action = 'This usually means the client could not choose a farmhand or rejected the slot list. Compare the client mod set and run the save slot audit.';
+      state.action = `This usually means the client could not choose a farmhand or rejected the slot list. Compare the client mod set and run the save slot audit.${clientModHint}`;
     }
   }
 

@@ -24,6 +24,7 @@ function formatDate(value) {
 async function loadPublicMods() {
   const list = document.getElementById('publicModsList');
   const packStatus = document.getElementById('packStatus');
+  const packFingerprint = document.getElementById('packFingerprint');
   const manifestMeta = document.getElementById('manifestMeta');
   const downloadPackBtn = document.getElementById('downloadPackBtn');
 
@@ -38,7 +39,14 @@ async function loadPublicMods() {
     packStatus.textContent = modCount > 0
       ? `已整理 ${modCount} 个玩家需要安装的 Mod。建议优先下载整包。`
       : '当前没有需要玩家额外安装的 Mod。';
-    manifestMeta.textContent = `生成时间：${formatDate(data.generatedAt)}`;
+    const fingerprint = data.clientPack?.fingerprint || data.clientLock?.pack?.fingerprint || '';
+    const lockFile = data.clientPack?.lockFile || data.clientLock?.pack?.lockFile || 'ylty-client-mod-lock.json';
+    if (packFingerprint) {
+      packFingerprint.textContent = fingerprint
+        ? `整包指纹 ${fingerprint} · 锁定清单 ${lockFile}`
+        : '';
+    }
+    manifestMeta.textContent = `生成时间：${formatDate(data.generatedAt)}${fingerprint ? ` · 整包指纹 ${fingerprint.slice(0, 12)}` : ''}`;
     if (downloadPackBtn) {
       downloadPackBtn.classList.toggle('is-disabled', modCount === 0);
       downloadPackBtn.setAttribute('aria-disabled', modCount === 0 ? 'true' : 'false');
@@ -69,6 +77,9 @@ async function loadPublicMods() {
     `).join('');
   } catch (error) {
     packStatus.textContent = '读取 Mod 清单失败。';
+    if (packFingerprint) {
+      packFingerprint.textContent = '';
+    }
     manifestMeta.textContent = '';
     list.innerHTML = `<div class="empty-state">读取失败：${escapeHtml(error.message)}</div>`;
   }

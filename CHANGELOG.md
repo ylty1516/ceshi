@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-06 客户端 Mod 一致性与无空位误报排查
+### Bug Fixes
+- 修复玩家下载包缺少强校验清单的问题：`stardew-client-mods.zip` 现在会包含 `ylty-client-mod-lock.json`，记录服务器要求玩家本地安装的 Mod、版本、SHA256 和整包指纹。
+- 修复“有小屋但玩家端提示无空闲位置”排查信息不准确的问题：加入握手诊断在 `sent_farmhand_list`、`disconnected_after_farmhand_list`、`rejected_no_slots` 阶段会明确提示检查客户端 Mod 包是否安装且指纹一致。
+
+### Improvements
+- `/player-mods` 公开下载页和 `/api/public/mods/manifest.json` 新增整包指纹，玩家可以核对自己安装的是不是服务器当前要求的同一套 Mod。
+- 诊断页新增客户端 Mod 一致性包检查，并在 Mod 依赖图中显示 manifest/scan error 数量，避免把 “15 mod(s)” 误解成 15 个 Mod 都坏了。
+- 旧版没有锁定清单的 `stardew-client-mods.zip` 会自动判定为过期，下载时自动重建，确保玩家拿到的是带指纹的新包。
+
 ## 2026-07-05 安装脚本与 Docker Hub 超时诊断修复
 ### Bug Fixes
 - 修复一键安装脚本写入 `.env` 时使用 `sed` 导致的特殊字符密码失败问题；Steam 密码里包含 `/`、`\`、`&` 等字符时不再出现 `sed: unterminated 's' command`，失败时也不会误报“配置已保存”。

@@ -15,6 +15,7 @@ const GAME_MODS_DIR = path.join(config.GAME_DIR, 'Mods');
 const PREINSTALLED_MODS_DIR = process.env.PREINSTALLED_MODS_DIR || '/home/steam/preinstalled-mods';
 const METADATA_SUFFIX = '.panel-meta.json';
 const CLIENT_PACK_FILENAME = 'stardew-client-mods.zip';
+const CLIENT_PACK_LOCK_FILENAME = 'ylty-client-mod-lock.json';
 const CLIENT_PACK_DIR = path.join(config.DATA_DIR, 'client-packs');
 const CLIENT_PACK_PATH = path.join(CLIENT_PACK_DIR, CLIENT_PACK_FILENAME);
 const CLIENT_PACK_METADATA_PATH = path.join(CLIENT_PACK_DIR, 'stardew-client-mods.json');
@@ -172,6 +173,31 @@ function hashFile(filePath) {
   }
 
   return hash.digest('hex');
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = canonicalize(value[key]);
+        return acc;
+      }, {});
+  }
+
+  return value;
+}
+
+function stableJson(value) {
+  return JSON.stringify(canonicalize(value));
+}
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 function invalidatePublicModManifestCache() {
@@ -996,6 +1022,57 @@ function getClientPackEntries() {
   return packEntries.sort((a, b) => a.folder.localeCompare(b.folder));
 }
 
+function buildClientModLock(entries = getClientPackEntries()) {
+  const mods = entries.map(entry => {
+    const modDir = path.join(GAME_MODS_DIR, entry.folder);
+    const stats = getDirectoryStats(modDir);
+    const hash = hashDirectory(modDir);
+
+    return {
+      folder: entry.folder,
+      id: entry.id,
+      name: entry.name,
+      version: entry.version,
+      sha256: hash,
+      size: stats.size,
+      fileCount: stats.fileCount,
+      updatedAt: stats.mtimeMs ? new Date(stats.mtimeMs).toISOString() : '',
+      installTarget: 'Stardew Valley/Mods',
+      downloadUrl: `/api/public/mods/download/${encodeURIComponent(entry.folder)}`,
+    };
+  }).sort((a, b) => a.id.localeCompare(b.id) || a.folder.localeCompare(b.folder));
+
+  const fingerprint = sha256(stableJson({
+    formatVersion: 1,
+    requiredClientMods: mods.map(mod => ({
+      folder: mod.folder,
+      id: mod.id,
+      version: mod.version,
+      sha256: mod.sha256,
+    })),
+  }));
+
+  return {
+    formatVersion: 1,
+    generatedAt: new Date().toISOString(),
+    project: 'ylty-stardew-coop-panel',
+    purpose: 'Players must install this exact client mod set before joining this server.',
+    installInstructions: [
+      'Close Stardew Valley.',
+      'Extract stardew-client-mods.zip into your local Stardew Valley/Mods directory.',
+      'Keep the folders and versions listed in this lock file unchanged.',
+      'Start Stardew Valley through SMAPI and join the server.',
+    ],
+    pack: {
+      filename: CLIENT_PACK_FILENAME,
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
+      fingerprint,
+      modCount: mods.length,
+    },
+    mods,
+  };
+}
+
 function getPublicModManifest(req = null, options = {}) {
   const cacheMs = Number.isFinite(PUBLIC_MOD_MANIFEST_CACHE_MS) && PUBLIC_MOD_MANIFEST_CACHE_MS > 0
     ? PUBLIC_MOD_MANIFEST_CACHE_MS
@@ -1005,20 +1082,8 @@ function getPublicModManifest(req = null, options = {}) {
   }
 
   const entries = getClientPackEntries();
-  const mods = entries.map(entry => {
-    const modDir = path.join(GAME_MODS_DIR, entry.folder);
-    const stats = getDirectoryStats(modDir);
-    const hash = hashDirectory(modDir);
-
-    return {
-      ...entry,
-      size: stats.size,
-      fileCount: stats.fileCount,
-      updatedAt: stats.mtimeMs ? new Date(stats.mtimeMs).toISOString() : '',
-      sha256: hash,
-      downloadUrl: `/api/public/mods/download/${encodeURIComponent(entry.folder)}`,
-    };
-  });
+  const clientLock = buildClientModLock(entries);
+  const mods = clientLock.mods;
 
   publicModManifestCache = {
     generatedAt: new Date().toISOString(),
@@ -1026,7 +1091,10 @@ function getPublicModManifest(req = null, options = {}) {
     clientPack: {
       ...getClientPackStatus(),
       downloadUrl: '/api/public/mods/client-pack',
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
+      fingerprint: clientLock.pack.fingerprint,
     },
+    clientLock,
     manifestUrl: '/api/public/mods/manifest.json',
     mods,
     total: mods.length,
@@ -1075,6 +1143,10 @@ function isClientPackCurrent(metadata, entries) {
     return false;
   }
 
+  if (metadata.lockFile !== CLIENT_PACK_LOCK_FILENAME || !metadata.packFingerprint) {
+    return false;
+  }
+
   try {
     return JSON.stringify(metadata.sources || []) === JSON.stringify(getClientPackSnapshot(entries));
   } catch (error) {
@@ -1111,6 +1183,8 @@ function getClientPackStatus() {
       mods: entries,
       size: zipStat ? zipStat.size : 0,
       rebuiltAt: metadata?.rebuiltAt || '',
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
+      fingerprint: metadata?.packFingerprint || '',
     };
   } catch (error) {
     return {
@@ -1121,6 +1195,8 @@ function getClientPackStatus() {
       mods: [],
       size: 0,
       rebuiltAt: '',
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
+      fingerprint: '',
       error: error.message,
       cause: error.cause || '',
       details: error.details || '',
@@ -1140,30 +1216,44 @@ function rebuildClientPack(reason = 'manual') {
       available: false,
       rebuilt: true,
       filename: CLIENT_PACK_FILENAME,
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
       modCount: 0,
       mods: [],
+      fingerprint: '',
       reason,
     };
   }
 
   const tempZip = path.join(CLIENT_PACK_DIR, `${CLIENT_PACK_FILENAME}.tmp-${process.pid}-${Date.now()}`);
+  const tempLockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ylty-client-mod-lock-'));
   fs.rmSync(tempZip, { force: true });
 
   try {
+    const clientLock = buildClientModLock(entries);
+    const lockPath = path.join(tempLockDir, CLIENT_PACK_LOCK_FILENAME);
+    fs.writeFileSync(lockPath, `${JSON.stringify(clientLock, null, 2)}\n`, 'utf-8');
+
     const zipTargets = entries.map(entry => `./${entry.folder}`);
     runCommand('zip', ['-qr', tempZip, ...zipTargets], {
       cwd: GAME_MODS_DIR,
       timeout: 180000,
+    });
+    runCommand('zip', ['-q', tempZip, CLIENT_PACK_LOCK_FILENAME], {
+      cwd: tempLockDir,
+      timeout: 30000,
     });
 
     fs.renameSync(tempZip, CLIENT_PACK_PATH);
 
     const metadata = {
       filename: CLIENT_PACK_FILENAME,
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
       rebuiltAt: new Date().toISOString(),
       reason,
       modCount: entries.length,
       mods: entries,
+      clientLock,
+      packFingerprint: clientLock.pack.fingerprint,
       sources: getClientPackSnapshot(entries),
       size: fs.statSync(CLIENT_PACK_PATH).size,
     };
@@ -1177,11 +1267,15 @@ function rebuildClientPack(reason = 'manual') {
       mods: entries,
       size: metadata.size,
       rebuiltAt: metadata.rebuiltAt,
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
+      fingerprint: metadata.packFingerprint,
       reason,
     };
   } catch (error) {
     fs.rmSync(tempZip, { force: true });
     throw error;
+  } finally {
+    fs.rmSync(tempLockDir, { recursive: true, force: true });
   }
 }
 
@@ -1194,6 +1288,8 @@ function safeRebuildClientPack(reason) {
       rebuilt: false,
       filename: CLIENT_PACK_FILENAME,
       modCount: getSafeClientPackEntryCount(),
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
+      fingerprint: '',
       error: error.message,
       cause: error.cause || '',
       details: error.details || '',
@@ -1214,6 +1310,8 @@ function getOrRebuildClientPack(reason) {
       mods: entries,
       size: fs.existsSync(CLIENT_PACK_PATH) ? fs.statSync(CLIENT_PACK_PATH).size : 0,
       rebuiltAt: metadata?.rebuiltAt || '',
+      lockFile: CLIENT_PACK_LOCK_FILENAME,
+      fingerprint: metadata?.packFingerprint || '',
     };
   }
 
@@ -1250,6 +1348,10 @@ function downloadClientPack(req, res) {
 
   res.setHeader('X-Client-Mod-Count', String(clientPack.modCount));
   res.setHeader('X-Client-Pack-Rebuilt', clientPack.rebuilt ? 'true' : 'false');
+  if (clientPack.fingerprint) {
+    res.setHeader('X-Client-Pack-Fingerprint', clientPack.fingerprint);
+  }
+  res.setHeader('X-Client-Pack-Lock-File', CLIENT_PACK_LOCK_FILENAME);
   res.download(CLIENT_PACK_PATH, CLIENT_PACK_FILENAME, (error) => {
     if (error && !res.headersSent) {
       return sendError(res, req, error, {
@@ -1805,6 +1907,7 @@ function clearCustomMods(req, res) {
 
 module.exports = {
   getMods,
+  getClientPackStatus,
   getPublicModManifest,
   getPublicMods,
   safeRebuildClientPack,

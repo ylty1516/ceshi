@@ -3508,7 +3508,8 @@ function formatClientPackStatus(clientPack) {
     });
   }
   if (clientPack.available) {
-    return tf('mods.clientPackReady', { count: clientPack.modCount || 0 });
+    const fingerprint = clientPack.fingerprint ? ` · ${clientPack.fingerprint.slice(0, 12)}` : '';
+    return tf('mods.clientPackReady', { count: clientPack.modCount || 0 }) + fingerprint;
   }
   if (clientPack.stale) {
     return t('mods.clientPackStale');

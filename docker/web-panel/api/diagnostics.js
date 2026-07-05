@@ -500,11 +500,25 @@ function buildHealth(req = null) {
     label: 'Mod dependency graph',
     status: modGraph.status === 'valid' ? 'ok' : (modGraph.status ? 'error' : 'warn'),
     detail: modGraph.status
-      ? `${modGraph.status}: ${modGraph.modCount || 0} mod(s), ${modGraph.missingDependencyCount || 0} missing required dependency/dependencies, ${modGraph.conflictCount || 0} conflict(s).`
+      ? `${modGraph.status}: ${modGraph.modCount || 0} mod(s), ${modGraph.errorCount || 0} manifest/scan error(s), ${modGraph.missingDependencyCount || 0} missing required dependency/dependencies, ${modGraph.conflictCount || 0} conflict(s).`
       : 'Mod graph has not been generated yet.',
     action: modGraph.status === 'valid'
       ? ''
-      : 'Open the Mods page, install missing dependencies on the server and player clients, or remove duplicate/conflicting mods.',
+      : 'Open the Mods page, check mod_graph.json errors, install missing dependencies on the server and player clients, or remove duplicate/conflicting mods.',
+  });
+
+  const clientPack = modsAPI.getClientPackStatus();
+  const clientPackNeedsAttention = clientPack.modCount > 0 && (!clientPack.available || clientPack.stale || clientPack.error || clientPack.cause);
+  checks.push({
+    id: 'client_mod_parity',
+    label: 'Client mod parity package',
+    status: clientPackNeedsAttention ? 'warn' : 'ok',
+    detail: clientPack.modCount > 0
+      ? `${clientPack.modCount} client-required mod(s); pack ${clientPack.available ? 'ready' : (clientPack.stale ? 'stale' : 'not ready')}; fingerprint ${(clientPack.fingerprint || '').slice(0, 12) || '--'}.`
+      : 'No client-required mods are installed.',
+    action: clientPack.modCount > 0
+      ? 'Players must install /player-mods -> stardew-client-mods.zip before joining. If they see no free slot while cabins exist, compare this pack fingerprint with the player copy.'
+      : '',
   });
 
   const saveState = worldState.save || {};

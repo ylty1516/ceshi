@@ -70,6 +70,45 @@ Check the Web panel diagnostics. The report now includes `server-autoload-state.
 - 服务端是否已把 farmhand 席位列表发给客户端
 - 客户端是否已选择 farmhand，并被服务端批准
 
+### Client Mod Mismatch Can Look Like "No Free Slot"
+### 客户端 Mod 不一致可能伪装成“没有空闲位置”
+
+If the diagnostics show that the server already sent the farmhand list but the player still sees "no free slot", disconnects after the list, or never requests a farmhand, check the player's local Mod set before editing cabins again.
+
+如果诊断显示服务端已经发送了 farmhand 席位列表，但玩家仍然看到“没有空闲位置”、收到列表后断开，或一直没有请求 farmhand，请先检查玩家本地 Mod，而不是继续改小屋数量。
+
+**Why This Happens / 原因：**
+
+Stardew multiplayer does not automatically synchronize SMAPI/content mods from the host to clients. Large content mods can add locations, events, NPCs, maps and save/world assumptions. If the host/server has those mods but a client is missing them or has different versions, the client may fail during the join flow before it can choose or load a farmhand. Depending on where the failure happens, the player-facing message can be misleading and look like an empty-slot/cabin problem.
+
+星露谷联机不会自动把 SMAPI/内容 Mod 从房主同步到玩家本地。大型内容 Mod 会增加地点、事件、NPC、地图以及世界状态假设；如果服务端有这些 Mod，而客户端缺失或版本不同，客户端可能在选择或载入 farmhand 前失败。失败位置不同，玩家端提示可能会误导成空闲席位/小屋问题。
+
+**What changed / 改动：**
+
+- The player download pack now includes `ylty-client-mod-lock.json`.
+- The public `/player-mods` page and `/api/public/mods/manifest.json` show the same pack fingerprint.
+- Join-handshake diagnostics now mention the client mod pack when a player disconnects after the farmhand list or sees a no-slot rejection while cabins exist.
+- The health check now reports the client mod parity package, including whether the pack is ready/stale and its fingerprint.
+
+- 玩家下载包现在会包含 `ylty-client-mod-lock.json`。
+- 公开 `/player-mods` 页面和 `/api/public/mods/manifest.json` 会显示同一个整包指纹。
+- 玩家在收到 farmhand 列表后断开，或明明有小屋却提示无空位时，加入握手诊断会直接提示检查客户端 Mod 包。
+- 健康检查会显示客户端 Mod 一致性包状态，包括是否 ready/stale 和整包指纹。
+
+**Required workflow / 正确流程：**
+
+1. Server owner uploads or imports mods in the panel.
+2. Panel rebuilds `stardew-client-mods.zip`.
+3. Every player downloads the pack from `/player-mods`.
+4. Every player closes Stardew Valley, extracts the pack into local `Stardew Valley/Mods`, and starts through SMAPI.
+5. If the server owner changes mods later, repeat the download/install step before joining again.
+
+1. 服主在面板上传或导入 Mod。
+2. 面板重建 `stardew-client-mods.zip`。
+3. 每个玩家从 `/player-mods` 下载整包。
+4. 每个玩家关闭游戏，把整包解压到本地 `Stardew Valley/Mods`，再通过 SMAPI 启动。
+5. 服主之后改过 Mod，就必须重新下载/安装后再进服。
+
 ---
 
 ## Audio Warnings in Logs
