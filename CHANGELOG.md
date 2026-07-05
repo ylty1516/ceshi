@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-05 一键卸载项目
+### New Features
+- Web 面板 `配置` 页面新增 `卸载项目` 危险操作，会要求输入 `UNINSTALL` 确认后才会执行。
+- 新增 `uninstall.sh`，面板不可用时也能在 SSH 中一键卸载本项目。
+
+### Improvements
+- 卸载任务会通过 `stardew-manager` 启动独立执行器，状态面板会显示阶段、失败原因、建议动作和日志尾部。
+- 卸载范围增加项目标记校验，只允许删除带有本项目 `docker-compose.yml`、Web 面板和 manager 标记文件的目录。
+
+### Safety
+- 卸载只停止并移除本项目 Docker Compose 服务、固定容器、本地项目镜像和项目目录；不会卸载 Docker，不会执行 `docker system prune`，也不会处理服务器其他项目。
+
 ## 2026-07-05 面板可用性与安全修复增强
 ### New Features
 - 诊断页新增 `一键安全修复` 按钮，会自动创建缺失目录、尝试修复可写权限、重建玩家 Mod 下载包并刷新公共 Mod 清单。

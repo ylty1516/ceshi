@@ -1516,6 +1516,21 @@ textarea {
   align-items: flex-start;
 }
 
+.maintenance-action-block {
+  min-width: 0;
+}
+
+.maintenance-action-block + .maintenance-action-block {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.maintenance-action-block .section-actions {
+  justify-content: flex-start;
+  margin-bottom: 10px;
+}
+
 .danger-zone-copy {
   margin: -2px 0 12px;
   color: var(--text-secondary);

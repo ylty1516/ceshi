@@ -161,6 +161,8 @@ app.post('/api/update', auth.verifyMiddleware, updateAPI.startUpdate);
 const maintenanceAPI = require('./api/maintenance');
 app.get('/api/maintenance/factory-reset/status', auth.verifyMiddleware, maintenanceAPI.getFactoryResetStatus);
 app.post('/api/maintenance/factory-reset', auth.verifyMiddleware, maintenanceAPI.startFactoryReset);
+app.get('/api/maintenance/uninstall/status', auth.verifyMiddleware, maintenanceAPI.getUninstallStatus);
+app.post('/api/maintenance/uninstall', auth.verifyMiddleware, maintenanceAPI.startUninstall);
 
 // Mods API
 const modsAPI = require('./api/mods');

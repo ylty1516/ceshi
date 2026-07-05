@@ -5,6 +5,7 @@ const { spawn, spawnSync } = require('child_process');
 
 const PORT = parseInt(process.env.MANAGER_PORT || '18700', 10);
 const PROJECT_DIR = process.env.PROJECT_DIR || '/workspace';
+const PROJECT_PARENT_DIR = path.dirname(PROJECT_DIR);
 const COMPOSE_FILE = process.env.COMPOSE_FILE || `${PROJECT_DIR}/docker-compose.yml`;
 const DEFAULT_ENV_FILE = `${PROJECT_DIR}/.env`;
 const RUNTIME_ENV_FILE = `${PROJECT_DIR}/data/panel/runtime.env`;
@@ -15,9 +16,13 @@ const UPDATE_RUNNER_FILE = `${PANEL_DATA_DIR}/update-runner.sh`;
 const FACTORY_RESET_STATUS_FILE = `${PANEL_DATA_DIR}/factory-reset-status.json`;
 const FACTORY_RESET_LOG_FILE = `${PANEL_DATA_DIR}/factory-reset.log`;
 const FACTORY_RESET_RUNNER_FILE = `${PANEL_DATA_DIR}/factory-reset-runner.sh`;
+const UNINSTALL_STATUS_FILE = `${PANEL_DATA_DIR}/uninstall-status.json`;
+const UNINSTALL_LOG_FILE = `${PANEL_DATA_DIR}/uninstall.log`;
+const UNINSTALL_RUNNER_FILE = `${PANEL_DATA_DIR}/uninstall-runner.sh`;
 const CHANGELOG_FILE = `${PROJECT_DIR}/CHANGELOG.md`;
 const UPDATE_CONTAINER = process.env.UPDATE_CONTAINER || 'puppy-stardew-panel-updater';
 const FACTORY_RESET_CONTAINER = process.env.FACTORY_RESET_CONTAINER || 'puppy-stardew-factory-reset';
+const UNINSTALL_CONTAINER = process.env.UNINSTALL_CONTAINER || 'puppy-stardew-uninstaller';
 const UPDATE_IMAGE = process.env.UPDATE_IMAGE || 'puppy-stardew-manager:local';
 const UPDATE_BRANCH = process.env.PUPPY_UPDATE_BRANCH || 'main';
 const UPDATE_QUEUED_TIMEOUT_MS = parseInt(process.env.PUPPY_UPDATE_QUEUED_TIMEOUT_MS || '90000', 10);
@@ -384,6 +389,71 @@ function writeFactoryResetStatus(status) {
   }, null, 2));
 }
 
+function readUninstallStatus() {
+  let status = {
+    state: 'idle',
+    phase: 'idle',
+    message: 'No uninstall task has been started yet.',
+    startedAt: '',
+    updatedAt: '',
+    completedAt: '',
+    logFile: UNINSTALL_LOG_FILE,
+    exitCode: 0,
+  };
+
+  try {
+    if (fs.existsSync(UNINSTALL_STATUS_FILE)) {
+      status = {
+        ...status,
+        ...JSON.parse(fs.readFileSync(UNINSTALL_STATUS_FILE, 'utf8')),
+      };
+    }
+  } catch (error) {
+    status = {
+      ...status,
+      state: 'unknown',
+      phase: 'status_read_failed',
+      message: error.message || 'Failed to read uninstall status.',
+    };
+  }
+
+  const container = getContainerState(UNINSTALL_CONTAINER);
+  if (status.state === 'running' && (!container.exists || !container.running)) {
+    status = {
+      ...status,
+      state: 'failed',
+      message: container.exists
+        ? 'The uninstall runner exited before reporting success.'
+        : 'The uninstall runner is missing while the status is still running.',
+      exitCode: container.exitCode || 1,
+      updatedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    ...status,
+    running: status.state === 'running',
+    manager: {
+      projectDir: PROJECT_DIR,
+      composeFile: COMPOSE_FILE,
+      uninstallContainer: UNINSTALL_CONTAINER,
+      updateImage: UPDATE_IMAGE,
+      container,
+    },
+    logTail: readTextTail(UNINSTALL_LOG_FILE) || (status.state === 'failed' ? (container.logTail || '') : ''),
+  };
+}
+
+function writeUninstallStatus(status) {
+  ensurePanelDataDir();
+  fs.writeFileSync(UNINSTALL_STATUS_FILE, JSON.stringify({
+    logFile: UNINSTALL_LOG_FILE,
+    ...status,
+    updatedAt: new Date().toISOString(),
+  }, null, 2));
+}
+
 function buildUpdaterScript(options = {}) {
   const force = options.force === true ? 'true' : 'false';
   const skipSaveBackup = options.skipSaveBackup === true ? 'true' : 'false';
@@ -699,6 +769,113 @@ trap - EXIT
 `;
 }
 
+function buildUninstallScript() {
+  return `#!/bin/sh
+set -eu
+
+PROJECT_DIR=${shellQuote(PROJECT_DIR)}
+COMPOSE_FILE=${shellQuote(COMPOSE_FILE)}
+STATUS_FILE=${shellQuote(UNINSTALL_STATUS_FILE)}
+LOG_FILE=${shellQuote(UNINSTALL_LOG_FILE)}
+STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+LAST_PHASE="starting"
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g'
+}
+
+write_status() {
+  state="$1"
+  phase="$2"
+  message="$3"
+  exit_code="$4"
+  now="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  completed=""
+  if [ "$state" != "running" ]; then
+    completed="$now"
+  fi
+  mkdir -p "$(dirname "$STATUS_FILE")"
+  cat > "$STATUS_FILE" <<JSON
+{
+  "state": "$state",
+  "phase": "$phase",
+  "message": "$(json_escape "$message")",
+  "startedAt": "$STARTED_AT",
+  "updatedAt": "$now",
+  "completedAt": "$completed",
+  "logFile": "$(json_escape "$LOG_FILE")",
+  "exitCode": $exit_code
+}
+JSON
+}
+
+set_phase() {
+  LAST_PHASE="$1"
+  write_status "running" "$1" "$2" 0
+  printf '\\n[%s] %s\\n' "$(date '+%F %T')" "$2"
+}
+
+on_exit() {
+  code="$?"
+  if [ "$code" -ne 0 ]; then
+    write_status "failed" "$LAST_PHASE" "卸载失败，项目目录未删除。请查看日志里的准确原因。" "$code"
+  fi
+}
+trap on_exit EXIT
+
+fail_safe() {
+  echo "$1"
+  exit 41
+}
+
+validate_project_dir() {
+  [ -n "$PROJECT_DIR" ] || fail_safe "PROJECT_DIR is empty."
+  [ "$PROJECT_DIR" != "/" ] || fail_safe "Refusing to uninstall root directory."
+  case "$PROJECT_DIR" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var)
+      fail_safe "Refusing to uninstall broad system directory: $PROJECT_DIR"
+      ;;
+  esac
+  [ -d "$PROJECT_DIR" ] || fail_safe "Project directory does not exist: $PROJECT_DIR"
+  [ -f "$COMPOSE_FILE" ] || fail_safe "Compose file does not exist: $COMPOSE_FILE"
+  [ -f "$PROJECT_DIR/docker-compose.yml" ] || fail_safe "Missing docker-compose.yml marker in project directory."
+  [ -f "$PROJECT_DIR/docker/web-panel/server.js" ] || fail_safe "Missing web panel marker in project directory."
+  [ -f "$PROJECT_DIR/docker/manager/server.js" ] || fail_safe "Missing manager marker in project directory."
+  if ! grep -q 'puppy-stardew' "$PROJECT_DIR/docker-compose.yml"; then
+    fail_safe "docker-compose.yml does not look like the Puppy Stardew project."
+  fi
+}
+
+mkdir -p "$PROJECT_DIR/data/panel"
+: > "$LOG_FILE"
+exec >> "$LOG_FILE" 2>&1
+
+set_phase "validate" "校验卸载范围"
+validate_project_dir
+cd "$PROJECT_DIR"
+export PWD="$PROJECT_DIR"
+
+set_phase "stop" "停止并移除本项目 Docker Compose 服务"
+docker compose -f "$COMPOSE_FILE" --project-directory "$PROJECT_DIR" down --remove-orphans || true
+
+set_phase "remove_containers" "移除本项目固定容器"
+for name in puppy-stardew puppy-stardew-init puppy-stardew-manager puppy-stardew-panel-updater puppy-stardew-factory-reset; do
+  docker rm -f "$name" >/dev/null 2>&1 || true
+done
+
+set_phase "remove_images" "移除本项目本地镜像"
+docker image rm -f puppy-stardew-server:local puppy-stardew-manager:local >/dev/null 2>&1 || true
+
+set_phase "remove_project" "删除本项目目录"
+cd /
+rm -rf -- "$PROJECT_DIR"
+if [ -e "$PROJECT_DIR" ]; then
+  fail_safe "Project directory still exists after removal attempt: $PROJECT_DIR"
+fi
+trap - EXIT
+`;
+}
+
 function startUpdate(options = {}) {
   const current = readUpdateStatus();
   if (current.running) {
@@ -710,6 +887,10 @@ function startUpdate(options = {}) {
   const resetStatus = readFactoryResetStatus();
   if (resetStatus.running) {
     throw new Error('Factory reset is already running. Wait for it to finish before updating.');
+  }
+  const uninstallStatus = readUninstallStatus();
+  if (uninstallStatus.running) {
+    throw new Error('Uninstall is already running. The project is being removed.');
   }
 
   ensurePanelDataDir();
@@ -785,6 +966,10 @@ function startFactoryReset() {
   if (updateStatus.running) {
     throw new Error('Panel update is already running. Wait for it to finish before resetting the game.');
   }
+  const uninstallStatus = readUninstallStatus();
+  if (uninstallStatus.running) {
+    throw new Error('Uninstall is already running. The project is being removed.');
+  }
 
   ensurePanelDataDir();
   fs.writeFileSync(FACTORY_RESET_RUNNER_FILE, buildFactoryResetScript(), { mode: 0o700 });
@@ -844,6 +1029,84 @@ function startFactoryReset() {
     alreadyRunning: false,
     containerId: run.stdout.trim(),
     status: readFactoryResetStatus(),
+  };
+}
+
+function startUninstall() {
+  const current = readUninstallStatus();
+  if (current.running) {
+    return {
+      alreadyRunning: true,
+      status: current,
+    };
+  }
+  const updateStatus = readUpdateStatus();
+  if (updateStatus.running) {
+    throw new Error('Panel update is already running. Wait for it to finish before uninstalling.');
+  }
+  const resetStatus = readFactoryResetStatus();
+  if (resetStatus.running) {
+    throw new Error('Factory reset is already running. Wait for it to finish before uninstalling.');
+  }
+
+  ensurePanelDataDir();
+  fs.writeFileSync(UNINSTALL_RUNNER_FILE, buildUninstallScript(), { mode: 0o700 });
+  try {
+    fs.chmodSync(UNINSTALL_RUNNER_FILE, 0o700);
+  } catch (error) {}
+
+  writeUninstallStatus({
+    state: 'running',
+    phase: 'queued',
+    message: '卸载任务已提交，正在启动执行容器。',
+    startedAt: new Date().toISOString(),
+    completedAt: '',
+    exitCode: 0,
+  });
+
+  spawnSync('docker', ['rm', '-f', UNINSTALL_CONTAINER], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+
+  const uninstallMountDir = PROJECT_PARENT_DIR && PROJECT_PARENT_DIR !== '/' ? PROJECT_PARENT_DIR : PROJECT_DIR;
+  const run = spawnSync('docker', [
+    'run',
+    '-d',
+    '--rm',
+    '--name',
+    UNINSTALL_CONTAINER,
+    '-v',
+    '/var/run/docker.sock:/var/run/docker.sock',
+    '-v',
+    `${uninstallMountDir}:${uninstallMountDir}:rw`,
+    '-w',
+    PROJECT_DIR,
+    '--entrypoint',
+    'sh',
+    UPDATE_IMAGE,
+    UNINSTALL_RUNNER_FILE,
+  ], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+
+  if (run.error || run.status !== 0) {
+    writeUninstallStatus({
+      state: 'failed',
+      phase: 'start_container',
+      message: '启动卸载执行容器失败。',
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      exitCode: run.status || 1,
+    });
+    throw new Error([run.error && run.error.message, run.stderr, run.stdout].filter(Boolean).join('\n') || 'Failed to start uninstall container');
+  }
+
+  return {
+    alreadyRunning: false,
+    containerId: run.stdout.trim(),
+    status: readUninstallStatus(),
   };
 }
 
@@ -954,6 +1217,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && req.url === '/uninstall/status') {
+    sendJson(res, 200, readUninstallStatus());
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/changelog') {
     const changelog = readChangelog();
     sendJson(res, changelog.success ? 200 : 404, changelog);
@@ -1006,6 +1274,34 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 500, {
         error: error.message || 'Failed to start factory reset',
         status: readFactoryResetStatus(),
+      });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/uninstall') {
+    try {
+      const body = await readJson(req);
+      if (!body || body.confirmation !== 'UNINSTALL') {
+        sendJson(res, 400, {
+          error: 'Uninstall confirmation is required',
+          code: 'UNINSTALL_CONFIRMATION_REQUIRED',
+          cause: 'The request did not include confirmation: UNINSTALL.',
+          action: 'Type UNINSTALL in the panel confirmation prompt before uninstalling the project.',
+        });
+        return;
+      }
+
+      const result = startUninstall();
+      sendJson(res, result.alreadyRunning ? 200 : 202, {
+        success: true,
+        action: 'uninstall',
+        ...result,
+      });
+    } catch (error) {
+      sendJson(res, 500, {
+        error: error.message || 'Failed to start uninstall',
+        status: readUninstallStatus(),
       });
     }
     return;

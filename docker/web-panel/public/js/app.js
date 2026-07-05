@@ -35,6 +35,8 @@ let lastPanelUpdateStatus = null;
 let lastChangelogData = null;
 let factoryResetPoll = null;
 let lastFactoryResetStatus = null;
+let uninstallPoll = null;
+let lastUninstallStatus = null;
 let lastModsData = null;
 let lastServerRecommendations = null;
 
@@ -44,6 +46,7 @@ const BACKUP_STATUS_POLL_MS = 2000;
 const CONTAINER_RECONNECT_POLL_MS = 2000;
 const PANEL_UPDATE_POLL_MS = 3000;
 const FACTORY_RESET_POLL_MS = 3000;
+const UNINSTALL_POLL_MS = 3000;
 const MOD_UPLOAD_MAX_MB = 100;
 
 function detectTheme() {
@@ -332,6 +335,33 @@ const translations = {
     'maintenance.startFail': '启动出厂化重置失败',
     'maintenance.statusFail': '读取出厂化状态失败',
     'maintenance.reconnecting': '出厂化重置过程中面板暂时断开，正在等待服务恢复。',
+    'maintenance.uninstall': '卸载项目',
+    'maintenance.uninstallRunningButton': '卸载中',
+    'maintenance.uninstallRefresh': '刷新卸载状态',
+    'maintenance.uninstallIdle': '当前没有卸载任务',
+    'maintenance.uninstallHint': '只卸载本星露谷联机项目：停止并移除本项目容器、项目本地镜像和项目目录；不卸载 Docker，也不处理服务器其他项目。',
+    'maintenance.uninstallConfirm': '危险操作：这会卸载整个星露谷联机项目并删除项目目录。Docker 和服务器其他项目不会被删除。请输入 UNINSTALL 确认。',
+    'maintenance.uninstallConfirmMismatch': '未输入 UNINSTALL，已取消卸载。',
+    'maintenance.uninstallStarted': '卸载任务已开始，面板随后会断开，这是正常现象。',
+    'maintenance.uninstallStartFail': '启动卸载失败',
+    'maintenance.uninstallStatusFail': '读取卸载状态失败',
+    'maintenance.uninstallReconnecting': '卸载过程中面板会被移除，当前正在等待最后状态。',
+    'maintenance.uninstall.state.idle': '未开始',
+    'maintenance.uninstall.state.running': '卸载中',
+    'maintenance.uninstall.state.succeeded': '卸载已执行',
+    'maintenance.uninstall.state.failed': '卸载失败',
+    'maintenance.uninstall.state.unknown': '状态未知',
+    'maintenance.uninstall.phase.idle': '空闲',
+    'maintenance.uninstall.phase.queued': '排队中',
+    'maintenance.uninstall.phase.status_read_failed': '状态读取失败',
+    'maintenance.uninstall.phase.manager_unavailable': '管理容器不可达',
+    'maintenance.uninstall.phase.validate': '校验卸载范围',
+    'maintenance.uninstall.phase.stop': '停止项目服务',
+    'maintenance.uninstall.phase.remove_containers': '移除项目容器',
+    'maintenance.uninstall.phase.remove_images': '移除项目镜像',
+    'maintenance.uninstall.phase.remove_project': '删除项目目录',
+    'maintenance.uninstall.phase.start_container': '启动执行容器',
+    'maintenance.uninstall.phase.complete': '完成',
     'maintenance.state.idle': '未开始',
     'maintenance.state.running': '重置中',
     'maintenance.state.succeeded': '重置完成',
@@ -657,6 +687,33 @@ const translations = {
     'maintenance.startFail': 'Failed to start factory reset',
     'maintenance.statusFail': 'Failed to read factory reset status',
     'maintenance.reconnecting': 'The panel disconnected during factory reset. Waiting for service recovery.',
+    'maintenance.uninstall': 'Uninstall Project',
+    'maintenance.uninstallRunningButton': 'Uninstalling',
+    'maintenance.uninstallRefresh': 'Refresh Uninstall',
+    'maintenance.uninstallIdle': 'No uninstall running',
+    'maintenance.uninstallHint': 'Only removes this Stardew co-op project: project containers, local project images, and the project folder. Docker itself and other server projects are not touched.',
+    'maintenance.uninstallConfirm': 'Danger: this uninstalls the whole Stardew co-op project and deletes the project folder. Docker and other server projects will not be deleted. Type UNINSTALL to confirm.',
+    'maintenance.uninstallConfirmMismatch': 'UNINSTALL was not entered, so uninstall was cancelled.',
+    'maintenance.uninstallStarted': 'Uninstall started. The panel will disconnect shortly; that is expected.',
+    'maintenance.uninstallStartFail': 'Failed to start uninstall',
+    'maintenance.uninstallStatusFail': 'Failed to read uninstall status',
+    'maintenance.uninstallReconnecting': 'The panel is being removed during uninstall. Waiting for final status.',
+    'maintenance.uninstall.state.idle': 'Idle',
+    'maintenance.uninstall.state.running': 'Uninstalling',
+    'maintenance.uninstall.state.succeeded': 'Uninstall scheduled',
+    'maintenance.uninstall.state.failed': 'Uninstall failed',
+    'maintenance.uninstall.state.unknown': 'Unknown',
+    'maintenance.uninstall.phase.idle': 'Idle',
+    'maintenance.uninstall.phase.queued': 'Queued',
+    'maintenance.uninstall.phase.status_read_failed': 'Status read failed',
+    'maintenance.uninstall.phase.manager_unavailable': 'Manager unreachable',
+    'maintenance.uninstall.phase.validate': 'Validating scope',
+    'maintenance.uninstall.phase.stop': 'Stopping project services',
+    'maintenance.uninstall.phase.remove_containers': 'Removing project containers',
+    'maintenance.uninstall.phase.remove_images': 'Removing project images',
+    'maintenance.uninstall.phase.remove_project': 'Deleting project folder',
+    'maintenance.uninstall.phase.start_container': 'Starting runner',
+    'maintenance.uninstall.phase.complete': 'Complete',
     'maintenance.state.idle': 'Idle',
     'maintenance.state.running': 'Resetting',
     'maintenance.state.succeeded': 'Reset complete',
@@ -795,6 +852,12 @@ function applyTranslations() {
   if (lastPanelUpdateStatus) {
     renderPanelUpdateStatus(lastPanelUpdateStatus);
   }
+  if (lastFactoryResetStatus) {
+    renderFactoryResetStatus(lastFactoryResetStatus);
+  }
+  if (lastUninstallStatus) {
+    renderUninstallStatus(lastUninstallStatus);
+  }
   if (lastChangelogData) {
     renderChangelog(lastChangelogData);
   }
@@ -812,6 +875,7 @@ function init() {
   loadDashboard();
   loadBackupStatus();
   loadPanelUpdateStatus(true);
+  loadUninstallStatus(true);
 
   // Logout
   document.getElementById('logoutBtn').onclick = () => {
@@ -912,6 +976,7 @@ function reloadCurrentPage() {
       loadConfig();
       loadPanelUpdateStatus(true);
       loadFactoryResetStatus(true);
+      loadUninstallStatus(true);
       break;
     case 'mods':
       loadMods();
@@ -982,7 +1047,7 @@ function navigateTo(page) {
     case 'diagnostics': loadDiagnostics(); break;
     case 'players': startPlayersAutoRefresh(); break;
     case 'saves': loadSaves(); break;
-    case 'config': loadConfig(); loadPanelUpdateStatus(true); loadFactoryResetStatus(true); break;
+    case 'config': loadConfig(); loadPanelUpdateStatus(true); loadFactoryResetStatus(true); loadUninstallStatus(true); break;
     case 'mods': loadMods(); break;
   }
 }
@@ -2779,6 +2844,165 @@ async function startFactoryReset() {
   } catch (error) {
     showToast(t('maintenance.reconnecting'), 'warn', 6000);
     startFactoryResetPolling();
+    return;
+  }
+
+  if (button) {
+    button.disabled = false;
+  }
+}
+
+function getUninstallState(status) {
+  if (!status || typeof status !== 'object') return 'idle';
+  return status.state || (status.running ? 'running' : 'idle');
+}
+
+function getUninstallPhaseLabel(phase) {
+  const key = 'maintenance.uninstall.phase.' + (phase || 'idle');
+  const label = t(key);
+  return label === key ? (phase || 'idle') : label;
+}
+
+function renderUninstallStatus(status) {
+  lastUninstallStatus = status || null;
+  const statusEl = document.getElementById('uninstallStatus');
+  const logEl = document.getElementById('uninstallLog');
+  const button = document.getElementById('uninstallBtn');
+  const buttonText = document.getElementById('uninstallBtnText');
+  if (!statusEl) return;
+
+  const state = getUninstallState(status);
+  const phase = status?.phase || 'idle';
+  const tone = getPanelUpdateTone(state);
+  const titleKey = 'maintenance.uninstall.state.' + state;
+  const title = t(titleKey) === titleKey ? state : t(titleKey);
+  const message = status?.message || (state === 'idle' ? t('maintenance.uninstallHint') : '');
+  const updatedAt = status?.updatedAt ? formatBackupTimestamp(status.updatedAt) : '--';
+  const meta = [
+    tf('update.meta', {
+      phase: getUninstallPhaseLabel(phase),
+      time: updatedAt,
+    }),
+  ];
+
+  if (state === 'failed' && typeof status.exitCode !== 'undefined') {
+    meta.push(tf('update.exitCode', { code: String(status.exitCode) }));
+  }
+  if (status?.managerError) {
+    meta.push(`Manager: ${status.managerError}`);
+  }
+  if (status?.cause) {
+    meta.push(`${t('logs.cause')}: ${status.cause}`);
+  }
+  if (status?.action) {
+    meta.push(`${t('logs.action')}: ${status.action}`);
+  }
+  if (status?.code) {
+    meta.push(`Code: ${status.code}`);
+  }
+
+  statusEl.className = 'update-status ' + tone;
+  statusEl.innerHTML =
+    '<div class="update-status-title">' + escapeHtml(title) + '</div>' +
+    '<div class="update-status-meta">' + escapeHtml(message) + '</div>' +
+    '<div class="update-status-meta">' + escapeHtml(meta.join(' · ')) + '</div>';
+
+  if (logEl) {
+    const logTail = status?.logTail || '';
+    logEl.style.display = logTail ? '' : 'none';
+    logEl.textContent = logTail;
+    if (logTail) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  const running = state === 'running';
+  const managerBlocked = status?.managerUnavailable === true || status?.canStart === false;
+  if (button) {
+    button.disabled = running || managerBlocked;
+  }
+  if (buttonText) {
+    buttonText.textContent = running ? t('maintenance.uninstallRunningButton') : t('maintenance.uninstall');
+  }
+
+  if (running) {
+    startUninstallPolling();
+  } else {
+    stopUninstallPolling();
+  }
+}
+
+async function loadUninstallStatus(silent) {
+  try {
+    const data = await API.get('/api/maintenance/uninstall/status');
+    if (!data) return;
+    if (data.error) {
+      const failedStatus = {
+        state: 'unknown',
+        phase: 'status_read_failed',
+        message: formatApiError(data, t('maintenance.uninstallStatusFail')),
+        updatedAt: new Date().toISOString(),
+        logTail: data.logTail || '',
+        code: data.code || '',
+        cause: data.cause || '',
+        action: data.action || '',
+        managerUnavailable: data.code && String(data.code).startsWith('MANAGER_'),
+        canStart: !(data.code && String(data.code).startsWith('MANAGER_')),
+      };
+      renderUninstallStatus(failedStatus);
+      if (!silent) {
+        showToast(formatApiError(data, t('maintenance.uninstallStatusFail')), 'error', 7000);
+      }
+      return;
+    }
+    renderUninstallStatus(data.status || data);
+  } catch (error) {
+    if (!silent) {
+      showToast(t('maintenance.uninstallReconnecting'), 'warn', 5000);
+    }
+    startUninstallPolling();
+  }
+}
+
+function startUninstallPolling() {
+  if (uninstallPoll) return;
+  uninstallPoll = setInterval(() => {
+    loadUninstallStatus(true);
+  }, UNINSTALL_POLL_MS);
+}
+
+function stopUninstallPolling() {
+  if (uninstallPoll) {
+    clearInterval(uninstallPoll);
+    uninstallPoll = null;
+  }
+}
+
+async function startUninstall() {
+  const typed = prompt(t('maintenance.uninstallConfirm'));
+  if (typed !== 'UNINSTALL') {
+    showToast(t('maintenance.uninstallConfirmMismatch'), 'warn', 5000);
+    return;
+  }
+
+  const button = document.getElementById('uninstallBtn');
+  if (button) {
+    button.disabled = true;
+  }
+  showToast(t('maintenance.uninstallStarted'), 'warn', 8000);
+
+  try {
+    const data = await API.post('/api/maintenance/uninstall', { confirmation: 'UNINSTALL' });
+    if (data && data.success) {
+      renderUninstallStatus(data.status || data);
+      startUninstallPolling();
+      return;
+    }
+
+    showToast(formatApiError(data, t('maintenance.uninstallStartFail')), 'error', 9000);
+  } catch (error) {
+    showToast(t('maintenance.uninstallReconnecting'), 'warn', 8000);
+    startUninstallPolling();
     return;
   }
 

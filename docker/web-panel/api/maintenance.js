@@ -14,6 +14,8 @@ const { AppError, sendError } = require('../errors');
 
 const FACTORY_RESET_STATUS_FILE = path.join(config.DATA_DIR, 'factory-reset-status.json');
 const FACTORY_RESET_LOG_FILE = path.join(config.DATA_DIR, 'factory-reset.log');
+const UNINSTALL_STATUS_FILE = path.join(config.DATA_DIR, 'uninstall-status.json');
+const UNINSTALL_LOG_FILE = path.join(config.DATA_DIR, 'uninstall.log');
 const MANAGER_TIMEOUT_MS = 8000;
 
 function readTextTail(filePath, maxBytes = 32000) {
@@ -69,6 +71,42 @@ function readLocalFactoryResetStatus() {
     running: status.state === 'running',
     managerAvailable: false,
     logTail: readTextTail(FACTORY_RESET_LOG_FILE),
+  };
+}
+
+function readLocalUninstallStatus() {
+  let status = {
+    state: 'idle',
+    phase: 'idle',
+    message: 'No uninstall task has been started yet.',
+    startedAt: '',
+    updatedAt: '',
+    completedAt: '',
+    logFile: UNINSTALL_LOG_FILE,
+    exitCode: 0,
+  };
+
+  try {
+    if (fs.existsSync(UNINSTALL_STATUS_FILE)) {
+      status = {
+        ...status,
+        ...JSON.parse(fs.readFileSync(UNINSTALL_STATUS_FILE, 'utf8')),
+      };
+    }
+  } catch (error) {
+    status = {
+      ...status,
+      state: 'unknown',
+      phase: 'status_read_failed',
+      message: error.message || 'Failed to read uninstall status.',
+    };
+  }
+
+  return {
+    ...status,
+    running: status.state === 'running',
+    managerAvailable: false,
+    logTail: readTextTail(UNINSTALL_LOG_FILE),
   };
 }
 
@@ -249,7 +287,55 @@ async function startFactoryReset(req, res) {
   }
 }
 
+async function getUninstallStatus(req, res) {
+  try {
+    const status = await requestManager('GET', '/uninstall/status');
+    res.json(status);
+  } catch (error) {
+    const localStatus = readLocalUninstallStatus();
+    const managerIssue = describeManagerError(error);
+    res.json({
+      ...localStatus,
+      state: localStatus.state === 'idle' ? 'unknown' : localStatus.state,
+      phase: localStatus.state === 'idle' ? 'manager_unavailable' : localStatus.phase,
+      message: managerIssue.message,
+      managerAvailable: false,
+      managerUnavailable: true,
+      canStart: false,
+      managerError: error.message,
+      code: managerIssue.code,
+      cause: managerIssue.cause,
+      action: managerIssue.action,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+}
+
+async function startUninstall(req, res) {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const confirmation = typeof body.confirmation === 'string' ? body.confirmation : '';
+    const result = await requestManager('POST', '/uninstall', { confirmation });
+
+    res.status(result.alreadyRunning ? 200 : 202).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, req, error, {
+      status: error.status || 500,
+      code: error.code || 'UNINSTALL_START_FAILED',
+      message: 'Failed to start uninstall',
+      cause: error.cause || 'The panel could not start the uninstall task through the manager service.',
+      details: error.details || error.message,
+      action: error.action || 'Check MANAGER_URL, the stardew-manager container, Docker socket access, and project directory permissions.',
+    });
+  }
+}
+
 module.exports = {
   getFactoryResetStatus,
   startFactoryReset,
+  getUninstallStatus,
+  startUninstall,
 };

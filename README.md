@@ -10,6 +10,7 @@
 - Web 面板查看服务器状态、联机 IP、在线人数、CPU/内存、游戏日期
 - Web 面板内置一键更新按钮，可自动备份关键配置、拉取最新版并重建 Docker 服务
 - Web 面板内置更新日志页面，可直接查看每个版本新增、优化和修复内容
+- Web 面板内置一键卸载项目按钮，只移除本项目容器、项目本地镜像和项目目录，不卸载 Docker
 - 默认按 8 人联机上限显示和写入游戏启动偏好，可通过 `MAX_PLAYERS` 调整
 - 显式编排状态机，区分 `INIT`、`VERIFYING`、`LOADING`、`STABILIZING`、`RUNNING`、`DEGRADED`、`STOPPED`
 - `save + mod_graph + SMAPI` 世界指纹，能持续提示存档、Mod 或 SMAPI 组合是否发生变化
@@ -367,6 +368,20 @@ cd /你的项目目录 && (curl -fsSL https://gh.sixyin.com/https://raw.githubus
 `配置` 页面提供 `出厂化重置游戏` 按钮。它会要求输入 `RESET` 确认，然后由 `stardew-manager` 启动独立任务执行：备份存档、上传 Mod、`data/meta` 和关键配置，停止游戏容器，清空 `data/saves`、`data/game`、`data/custom-mods`、`data/logs`、`data/meta`、玩家 Mod 下载包和运行控制文件，再重新创建服务器。
 
 出厂化重置会保留项目源码、`.env`、面板登录数据、`data/steam`、`data/backups` 和 `data/secrets/`。因为 `data/game` 会被清空，下一次启动会重新下载/校验 Stardew Valley 并安装内置 Mod，耗时取决于服务器网络和 Steam 下载速度。
+
+`配置` 页面也提供 `卸载项目` 按钮。它会要求输入 `UNINSTALL` 确认，然后停止并移除本项目的 Docker Compose 服务、固定容器、本地项目镜像和项目目录。它不会执行 `docker system prune`，不会卸载 Docker，也不会删除服务器上的其他项目。
+
+如果面板已经打不开，也可以在服务器 SSH 中进入项目目录执行：
+
+```bash
+PUPPY_UNINSTALL_CONFIRM=UNINSTALL ./uninstall.sh
+```
+
+如果你只想停止并清理容器、暂时保留项目文件，可以执行：
+
+```bash
+PUPPY_UNINSTALL_CONFIRM=UNINSTALL PUPPY_UNINSTALL_KEEP_FILES=true ./uninstall.sh
+```
 
 ## 2核2G 小服务器优化
 

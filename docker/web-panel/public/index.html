@@ -660,6 +660,8 @@
           <div class="card card-spaced danger-zone">
             <div class="section-header">
               <h3 data-i18n="maintenance.title">Danger Zone</h3>
+            </div>
+            <div class="maintenance-action-block">
               <div class="section-actions">
                 <button class="btn btn-danger btn-sm" id="factoryResetBtn" type="button" onclick="startFactoryReset()">
                   <svg class="icon"><use href="#icon-trash"></use></svg>
@@ -670,14 +672,34 @@
                   <span data-i18n="maintenance.refresh">Refresh Status</span>
                 </button>
               </div>
-            </div>
-            <div class="danger-zone-copy" data-i18n="maintenance.factoryResetHint">Resets saves, game files, uploaded mods, logs, and runtime control files while preserving panel login, Steam cache, backups, and project code.</div>
-            <div class="update-panel">
-              <div id="factoryResetStatus" class="update-status idle">
-                <div class="update-status-title" data-i18n="maintenance.idle">No factory reset running</div>
-                <div class="update-status-meta" data-i18n="maintenance.hint">A reset creates a safety backup, stops the game container, clears runtime data, and recreates the server.</div>
+              <div class="danger-zone-copy" data-i18n="maintenance.factoryResetHint">Resets saves, game files, uploaded mods, logs, and runtime control files while preserving panel login, Steam cache, backups, and project code.</div>
+              <div class="update-panel">
+                <div id="factoryResetStatus" class="update-status idle">
+                  <div class="update-status-title" data-i18n="maintenance.idle">No factory reset running</div>
+                  <div class="update-status-meta" data-i18n="maintenance.hint">A reset creates a safety backup, stops the game container, clears runtime data, and recreates the server.</div>
+                </div>
+                <pre id="factoryResetLog" class="update-log" style="display:none"></pre>
               </div>
-              <pre id="factoryResetLog" class="update-log" style="display:none"></pre>
+            </div>
+            <div class="maintenance-action-block">
+              <div class="section-actions">
+                <button class="btn btn-danger btn-sm" id="uninstallBtn" type="button" onclick="startUninstall()">
+                  <svg class="icon"><use href="#icon-trash"></use></svg>
+                  <span id="uninstallBtnText" data-i18n="maintenance.uninstall">Uninstall Project</span>
+                </button>
+                <button class="btn btn-sm btn-muted" type="button" onclick="loadUninstallStatus()">
+                  <svg class="icon"><use href="#icon-refresh"></use></svg>
+                  <span data-i18n="maintenance.uninstallRefresh">Refresh Uninstall</span>
+                </button>
+              </div>
+              <div class="danger-zone-copy" data-i18n="maintenance.uninstallHint">Stops and removes only this Stardew co-op project: project containers, local project images, and the project folder. Docker itself and other server projects are not touched.</div>
+              <div class="update-panel">
+                <div id="uninstallStatus" class="update-status idle">
+                  <div class="update-status-title" data-i18n="maintenance.uninstallIdle">No uninstall running</div>
+                  <div class="update-status-meta" data-i18n="maintenance.uninstallHint">Stops and removes only this Stardew co-op project: project containers, local project images, and the project folder. Docker itself and other server projects are not touched.</div>
+                </div>
+                <pre id="uninstallLog" class="update-log" style="display:none"></pre>
+              </div>
             </div>
           </div>
           <div class="card card-spaced">
