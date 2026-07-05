@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-06 存档席位审计与 SAVE_NAME 引号修复
+### Bug Fixes
+- 修复 Web 面板写入 `runtime.env` 后入口脚本原样导出单引号的问题；`SAVE_NAME='999'` 不会再变成游戏进程里的字面量 `'999'`，避免 ServerAutoLoad 找不到真实存档。
+- 启动时会继续把 `playerLimit` 写入配置，并额外确保 `enableServer`、`ipConnectionsEnabled`、`enableFarmhandCreation` 为开启状态，减少服务器端设置导致的联机无空位/不可创建 farmhand 问题。
+### Improvements
+- 诊断页新增 `Save slot and cabin audit`，会显示实际选中存档、选中来源、`playerLimit`、是否允许创建 farmhand、识别到的小屋数、已有 farmhand 数和估算空闲 farmhand 席位。
+- 加入握手诊断会把存档席位审计结果和玩家 Mod 指纹一起带入提示，方便区分“真没席位”“选错存档/配置冲突”和“客户端 Mod 不一致伪装成无空位”。
+- 世界指纹现在会在 `SAVE_NAME` 为空时读取 `.selected_save` 标记，避免面板切换默认存档后诊断仍指向最新存档而不是实际目标存档。
+
 ## 2026-07-06 客户端 Mod 一致性与无空位误报排查
 ### Bug Fixes
 - 修复玩家下载包缺少强校验清单的问题：`stardew-client-mods.zip` 现在会包含 `ylty-client-mod-lock.json`，记录服务器要求玩家本地安装的 Mod、版本、SHA256 和整包指纹。

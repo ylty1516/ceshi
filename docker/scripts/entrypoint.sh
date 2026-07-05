@@ -22,6 +22,27 @@ if [ ! -f "$PANEL_ENV_FILE" ] && [ -f "/home/steam/.env" ]; then
     PANEL_ENV_FILE="/home/steam/.env"
 fi
 
+decode_panel_env_value() {
+    local value="$1"
+    value="${value%$'\r'}"
+
+    if [[ "$value" == \'*\' && "$value" == *\' && ${#value} -ge 2 ]]; then
+        value="${value:1:${#value}-2}"
+        value="${value//\\\'/\'}"
+    elif [[ "$value" == \"*\" && "$value" == *\" && ${#value} -ge 2 ]]; then
+        value="${value:1:${#value}-2}"
+        value="${value//\\n/$'\n'}"
+        value="${value//\\r/$'\r'}"
+        value="${value//\\t/$'\t'}"
+        value="${value//\\\"/\"}"
+        value="${value//\\\\/\\}"
+    else
+        value="${value%% #*}"
+    fi
+
+    printf '%s' "$value"
+}
+
 load_panel_env_overrides() {
     local env_file=${1:-$PANEL_ENV_FILE}
 
@@ -41,6 +62,7 @@ load_panel_env_overrides() {
                 ;;
         esac
 
+        value=$(decode_panel_env_value "$value")
         export "$key=$value"
     done < "$env_file"
 }
@@ -294,7 +316,10 @@ apply_startup_preferences_tuning() {
         player_limit=8
     fi
 
-    perl -0pi -e "s#<playerLimit>.*?</playerLimit>#<playerLimit>${player_limit}</playerLimit>#s;" "$config_file"
+    perl -0pi -e "s#<playerLimit>.*?</playerLimit>#<playerLimit>${player_limit}</playerLimit>#s;
+        s#<enableServer>.*?</enableServer>#<enableServer>true</enableServer>#s;
+        s#<ipConnectionsEnabled>.*?</ipConnectionsEnabled>#<ipConnectionsEnabled>true</ipConnectionsEnabled>#s;
+        s#<enableFarmhandCreation>.*?</enableFarmhandCreation>#<enableFarmhandCreation>true</enableFarmhandCreation>#s;" "$config_file"
 
     if [ "$LOW_PERF_MODE" != "true" ]; then
         return 0

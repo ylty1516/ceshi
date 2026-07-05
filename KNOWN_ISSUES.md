@@ -109,6 +109,29 @@ Stardew multiplayer does not automatically synchronize SMAPI/content mods from t
 4. 每个玩家关闭游戏，把整包解压到本地 `Stardew Valley/Mods`，再通过 SMAPI 启动。
 5. 服主之后改过 Mod，就必须重新下载/安装后再进服。
 
+### Other Causes of "No Free Slot"
+### “没有空闲位置”的其它真实原因
+
+Client Mod mismatch is common, but it is not the only cause. The health page now includes `Save slot and cabin audit` so the panel can prove or rule out these blockers:
+
+- the game process is loading a different save than the one shown to the server owner
+- `runtime.env`, process `SAVE_NAME`, `.selected_save`, and ServerAutoLoad `SaveFileName` disagree
+- `SAVE_NAME` was exported with literal quote characters, so the game searches for `'999'` instead of `999`
+- `playerLimit` is below 8 or `enableFarmhandCreation` is disabled in `startup_preferences`
+- the save has fewer Cabin buildings than expected
+- the save already contains enough farmhand records to fill the available cabin/playerLimit capacity
+- ServerAutoLoad did not find the selected save in the native Co-op Host list, or the selected slot is not hostable
+
+客户端 Mod 不一致很常见，但不是唯一原因。健康检查现在包含 `Save slot and cabin audit`，面板会直接证明或排除这些阻塞点：
+
+- 游戏进程实际加载的不是服主以为的那个存档
+- `runtime.env`、进程里的 `SAVE_NAME`、`.selected_save` 和 ServerAutoLoad 的 `SaveFileName` 互相不一致
+- `SAVE_NAME` 被带上了字面量引号，导致游戏寻找的是 `'999'` 而不是 `999`
+- `startup_preferences` 里的 `playerLimit` 低于 8，或 `enableFarmhandCreation` 被关闭
+- 存档里可识别的小屋数量少于预期
+- 存档里已有 farmhand 记录已经占满小屋/玩家上限容量
+- ServerAutoLoad 没有在原生 Co-op Host 列表里找到目标存档，或目标槽位本身不可主持
+
 ---
 
 ## Audio Warnings in Logs

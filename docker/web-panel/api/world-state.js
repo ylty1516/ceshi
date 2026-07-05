@@ -397,11 +397,29 @@ function normalizeId(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function readSelectedSaveMarker() {
+  try {
+    const markerPath = path.join(config.SAVES_DIR, '.selected_save');
+    if (!fs.existsSync(markerPath)) {
+      return '';
+    }
+
+    const selected = fs.readFileSync(markerPath, 'utf-8').trim();
+    if (!selected || selected.includes('/') || selected.includes('\\')) {
+      return '';
+    }
+
+    return selected;
+  } catch (error) {
+    return '';
+  }
+}
+
 function buildSaveState() {
   const savesDir = config.SAVES_DIR;
   const saveState = {
     savesDir,
-    selectedSave: process.env.SAVE_NAME || '',
+    selectedSave: process.env.SAVE_NAME || readSelectedSaveMarker(),
     saves: [],
     status: 'unknown',
     errors: [],

@@ -11,6 +11,7 @@ const { AppError, commandError, sendError } = require('../errors');
 const { buildDiagnostics } = require('../diagnostics');
 const statusAPI = require('./status');
 const modsAPI = require('./mods');
+const saveAudit = require('./save-audit');
 
 const configuredDiagnosticLogTailBytes = parseInt(process.env.PANEL_DIAGNOSTIC_LOG_TAIL_BYTES || String(256 * 1024), 10);
 const configuredHealthCommandTimeoutMs = parseInt(process.env.PANEL_HEALTH_COMMAND_TIMEOUT_MS || '1500', 10);
@@ -477,6 +478,22 @@ function buildHealth(req = null) {
     status: handshakeStatus,
     detail: joinHandshake.label || handshakeStage,
     action: joinHandshake.action || 'Have a player try to join, then refresh diagnostics.',
+  });
+
+  const slotAudit = status.saveSlotAudit && status.saveSlotAudit.status
+    ? status.saveSlotAudit
+    : saveAudit.buildSaveSlotAudit({ force: true });
+  const slot = slotAudit.slotEstimate || {};
+  const selection = slotAudit.selection || {};
+  const issueSummary = Array.isArray(slotAudit.issues) && slotAudit.issues.length > 0
+    ? `; issue: ${slotAudit.issues[0].code}`
+    : '';
+  checks.push({
+    id: 'save_slot_audit',
+    label: 'Save slot and cabin audit',
+    status: slotAudit.status === 'error' ? 'error' : (slotAudit.status === 'warn' ? 'warn' : 'ok'),
+    detail: `save ${selection.selectedSave || '--'} via ${selection.source || 'unknown'}; playerLimit ${slot.playerLimit ?? '--'}; farmhandCreation ${slot.enableFarmhandCreation === null ? '--' : slot.enableFarmhandCreation}; cabins ${slot.cabinCount ?? '--'}; existing farmhands ${slot.farmhandCount ?? '--'}; estimated free farmhand slots ${slot.estimatedFreeFarmhandSlots ?? '--'}${issueSummary}.`,
+    action: slotAudit.action || '',
   });
 
   const orchestration = status.orchestration || {};
