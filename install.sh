@@ -40,50 +40,70 @@ run_quick_start() {
   bash quick-start-zh.sh
 }
 
+copy_extracted_project() {
+  extracted_dir="$1"
+  source_dir=""
+
+  if [ -f "$extracted_dir/docker-compose.yml" ] && [ -f "$extracted_dir/quick-start-zh.sh" ]; then
+    source_dir="$extracted_dir"
+  else
+    root_count="$(find "$extracted_dir" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
+    root_dir="$(find "$extracted_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    if [ "$root_count" = "1" ] && [ -n "$root_dir" ] && [ -f "$root_dir/docker-compose.yml" ] && [ -f "$root_dir/quick-start-zh.sh" ]; then
+      source_dir="$root_dir"
+    fi
+  fi
+
+  [ -n "$source_dir" ] || return 1
+  cp -a "$source_dir/." "$REPO_DIR/"
+  [ -f "$REPO_DIR/docker-compose.yml" ] && [ -f "$REPO_DIR/quick-start-zh.sh" ]
+}
+
 download_archive() {
   url="$1"
 
   TMP_ARCHIVE="$(mktemp)" || return 1
-  TMP_DIR=""
+  TMP_DIR="$(mktemp -d)" || {
+    rm -f "$TMP_ARCHIVE"
+    return 1
+  }
   if command -v curl >/dev/null 2>&1; then
     curl -fL --connect-timeout 15 --retry 2 --retry-delay 2 "$url" -o "$TMP_ARCHIVE"
   elif command -v wget >/dev/null 2>&1; then
     wget -q --timeout=30 --tries=2 "$url" -O "$TMP_ARCHIVE"
   else
+    rm -rf "$TMP_DIR"
     rm -f "$TMP_ARCHIVE"
     return 1
   fi
 
   if [ $? -ne 0 ]; then
+    rm -rf "$TMP_DIR"
     rm -f "$TMP_ARCHIVE"
     return 1
   fi
 
   rm -rf "$REPO_DIR"
   mkdir -p "$REPO_DIR" || {
+    rm -rf "$TMP_DIR"
     rm -f "$TMP_ARCHIVE"
     return 1
   }
 
-  if command -v tar >/dev/null 2>&1 && tar -xzf "$TMP_ARCHIVE" --strip-components=1 -C "$REPO_DIR" 2>/dev/null; then
+  if command -v tar >/dev/null 2>&1 && tar -xzf "$TMP_ARCHIVE" -C "$TMP_DIR" 2>/dev/null && copy_extracted_project "$TMP_DIR"; then
+    rm -rf "$TMP_DIR"
     rm -f "$TMP_ARCHIVE"
     return 0
   fi
 
   if command -v unzip >/dev/null 2>&1; then
+    rm -rf "$TMP_DIR"
     TMP_DIR="$(mktemp -d)" || {
       rm -rf "$REPO_DIR"
       rm -f "$TMP_ARCHIVE"
       return 1
     }
-    if unzip -q "$TMP_ARCHIVE" -d "$TMP_DIR" 2>/dev/null; then
-      root_count="$(find "$TMP_DIR" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
-      if [ "$root_count" = "1" ] && [ -d "$(find "$TMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)" ]; then
-        root_dir="$(find "$TMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-        cp -a "$root_dir/." "$REPO_DIR/"
-      else
-        cp -a "$TMP_DIR/." "$REPO_DIR/"
-      fi
+    if unzip -q "$TMP_ARCHIVE" -d "$TMP_DIR" 2>/dev/null && copy_extracted_project "$TMP_DIR"; then
       rm -rf "$TMP_DIR"
       rm -f "$TMP_ARCHIVE"
       return 0
