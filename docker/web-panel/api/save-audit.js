@@ -161,28 +161,58 @@ function readStartupPreferences() {
   };
 }
 
+function compareVersion(a, b) {
+  const left = String(a || '').split('.').map(part => parseInt(part, 10) || 0);
+  const right = String(b || '').split('.').map(part => parseInt(part, 10) || 0);
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const diff = (left[index] || 0) - (right[index] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 function readServerAutoLoadConfig() {
-  const file = path.join(config.GAME_DIR, 'Mods', 'ServerAutoLoad', 'config.json');
+  const modDir = path.join(config.GAME_DIR, 'Mods', 'ServerAutoLoad');
+  const manifestFile = path.join(modDir, 'manifest.json');
+  const file = path.join(modDir, 'config.json');
+  const manifest = readJson(manifestFile, null);
   const data = readJson(file, null);
+  const version = manifest && !manifest.error ? String(manifest.Version || '') : '';
   if (!data || data.error) {
     return {
       file,
+      manifestFile,
       exists: false,
+      manifestExists: !!(manifest && !manifest.error),
+      version,
+      versionOk: compareVersion(version, '2.0.0') >= 0,
       enabled: null,
       saveFileName: '',
       useSelectedSaveMarker: true,
       autoSelectMostRecentSave: true,
+      legacyConfig: false,
       error: data && data.error ? data.error : '',
     };
   }
 
+  const legacyConfig = Object.prototype.hasOwnProperty.call(data, 'EnableAutoLoad') ||
+    !Object.prototype.hasOwnProperty.call(data, 'StateFile') ||
+    !Object.prototype.hasOwnProperty.call(data, 'SelectedSaveMarker') ||
+    !Object.prototype.hasOwnProperty.call(data, 'Enabled');
+
   return {
     file,
+    manifestFile,
     exists: true,
+    manifestExists: !!(manifest && !manifest.error),
+    version,
+    versionOk: compareVersion(version, '2.0.0') >= 0,
     enabled: data.Enabled !== false,
     saveFileName: normalizeSaveName(data.SaveFileName),
     useSelectedSaveMarker: data.UseSelectedSaveMarker !== false,
     autoSelectMostRecentSave: data.AutoSelectMostRecentSave !== false,
+    legacyConfig,
   };
 }
 
@@ -534,6 +564,31 @@ function buildSaveSlotAudit(options = {}) {
       'SERVER_AUTOLOAD_DISABLED',
       'ServerAutoLoad is disabled, so the native Co-op Host flow will not auto-load the save.',
       'Enable ServerAutoLoad and restart the container.'
+    ));
+  }
+
+  if (autoLoadConfig.manifestExists === false || !autoLoadConfig.version) {
+    audit.issues.push(buildIssue(
+      'error',
+      'SERVER_AUTOLOAD_MANIFEST_MISSING',
+      'ServerAutoLoad manifest is missing, so the panel cannot confirm the native Co-op Host loader version.',
+      'Update/rebuild the container and let the bundled ServerAutoLoad mod sync into the game Mods directory.'
+    ));
+  } else if (autoLoadConfig.versionOk === false) {
+    audit.issues.push(buildIssue(
+      'error',
+      'SERVER_AUTOLOAD_VERSION_TOO_OLD',
+      `ServerAutoLoad is v${autoLoadConfig.version}; v2.0.0 or newer is required for the native Co-op Host flow.`,
+      'Run the panel update or reinstall from the latest release, then restart the container so ServerAutoLoad v2 replaces the old persistent copy.'
+    ));
+  }
+
+  if (autoLoadConfig.legacyConfig) {
+    audit.issues.push(buildIssue(
+      'error',
+      'SERVER_AUTOLOAD_LEGACY_CONFIG',
+      'ServerAutoLoad config uses the old v1 schema, so the v2 native Co-op Host state file and selected-save marker may not be configured.',
+      'Update to this build and restart once; the bundled mod sync will replace the legacy config with the v2 config.'
     ));
   }
 

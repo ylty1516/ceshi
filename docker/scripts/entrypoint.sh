@@ -155,6 +155,36 @@ get_mod_manifest_version() {
     awk -F'"' '/"Version"[[:space:]]*:/ { print $4; exit }' "$manifest" 2>/dev/null || true
 }
 
+server_autoload_config_is_legacy() {
+    local config_file=$1
+
+    [ -f "$config_file" ] || return 1
+    grep -q '"EnableAutoLoad"' "$config_file" && return 0
+    grep -q '"StateFile"' "$config_file" || return 0
+    grep -q '"SelectedSaveMarker"' "$config_file" || return 0
+    grep -q '"Enabled"' "$config_file" || return 0
+    return 1
+}
+
+repair_server_autoload_config_if_legacy() {
+    local source_mod=$1
+    local target_mod=$2
+    local backup_root=$3
+    local timestamp=$4
+    local old_config="$target_mod/config.json"
+    local source_config="$source_mod/config.json"
+    local config_backup_dir
+
+    [ -f "$source_config" ] || return 0
+    server_autoload_config_is_legacy "$old_config" || return 0
+
+    config_backup_dir="$backup_root/$timestamp"
+    mkdir -p "$config_backup_dir" || return 0
+    cp -a "$old_config" "$config_backup_dir/ServerAutoLoad.legacy.config.json" 2>/dev/null || true
+    log_warn "  ServerAutoLoad legacy config detected; replacing with v2 native Co-op Host config"
+    cp -a "$source_config" "$old_config" 2>/dev/null || true
+}
+
 sync_preinstalled_mods() {
     local source_root="/home/steam/preinstalled-mods"
     local target_root="/home/steam/stardewvalley/Mods"
@@ -178,6 +208,7 @@ sync_preinstalled_mods() {
         local installed_version
         local mod_backup_root
         local config_backup=""
+        local preserve_config="true"
 
         mod_name=$(basename "$source_mod")
         target_mod="$target_root/$mod_name"
@@ -199,6 +230,9 @@ sync_preinstalled_mods() {
         fi
 
         if [ "$bundled_version" = "$installed_version" ]; then
+            if [ "$mod_name" = "ServerAutoLoad" ]; then
+                repair_server_autoload_config_if_legacy "$source_mod" "$target_mod" "$backup_root" "$timestamp"
+            fi
             log_info "  ✓ $mod_name already current (v$bundled_version)"
             continue
         fi
@@ -223,14 +257,19 @@ sync_preinstalled_mods() {
             continue
         }
 
-        if [ -f "$target_mod/config.json" ]; then
+        if [ "$mod_name" = "ServerAutoLoad" ] && server_autoload_config_is_legacy "$target_mod/config.json"; then
+            preserve_config="false"
+            log_warn "  ServerAutoLoad legacy config detected; v2 config will replace it"
+        fi
+
+        if [ "$preserve_config" = "true" ] && [ -f "$target_mod/config.json" ]; then
             config_backup="$mod_backup_root/$mod_name.config.json"
             cp -a "$target_mod/config.json" "$config_backup" 2>/dev/null || config_backup=""
         fi
 
         rm -rf "$target_mod"
         if cp -a "$source_mod" "$target_mod"; then
-            if [ -n "$config_backup" ] && [ -f "$config_backup" ]; then
+            if [ "$preserve_config" = "true" ] && [ -n "$config_backup" ] && [ -f "$config_backup" ]; then
                 cp -a "$config_backup" "$target_mod/config.json" 2>/dev/null || true
             fi
             log_info "  ✓ $mod_name updated; backup saved to $mod_backup_root/$mod_name"

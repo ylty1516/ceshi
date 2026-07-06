@@ -485,6 +485,9 @@ function buildHealth(req = null) {
     : saveAudit.buildSaveSlotAudit({ force: true });
   const slot = slotAudit.slotEstimate || {};
   const selection = slotAudit.selection || {};
+  const auditAutoload = slotAudit.serverAutoLoad && slotAudit.serverAutoLoad.config
+    ? slotAudit.serverAutoLoad.config
+    : {};
   const issueSummary = Array.isArray(slotAudit.issues) && slotAudit.issues.length > 0
     ? `; issue: ${slotAudit.issues[0].code}`
     : '';
@@ -492,7 +495,7 @@ function buildHealth(req = null) {
     id: 'save_slot_audit',
     label: 'Save slot and cabin audit',
     status: slotAudit.status === 'error' ? 'error' : (slotAudit.status === 'warn' ? 'warn' : 'ok'),
-    detail: `save ${selection.selectedSave || '--'} via ${selection.source || 'unknown'}; playerLimit ${slot.playerLimit ?? '--'}; farmhandCreation ${slot.enableFarmhandCreation === null ? '--' : slot.enableFarmhandCreation}; cabins ${slot.cabinCount ?? '--'}; existing farmhands ${slot.farmhandCount ?? '--'}; estimated free farmhand slots ${slot.estimatedFreeFarmhandSlots ?? '--'}${issueSummary}.`,
+    detail: `save ${selection.selectedSave || '--'} via ${selection.source || 'unknown'}; ServerAutoLoad ${auditAutoload.version || '--'}; playerLimit ${slot.playerLimit ?? '--'}; farmhandCreation ${slot.enableFarmhandCreation === null ? '--' : slot.enableFarmhandCreation}; cabins ${slot.cabinCount ?? '--'}; existing farmhands ${slot.farmhandCount ?? '--'}; estimated free farmhand slots ${slot.estimatedFreeFarmhandSlots ?? '--'}${issueSummary}.`,
     action: slotAudit.action || '',
   });
 

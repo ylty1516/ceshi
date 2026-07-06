@@ -3,8 +3,8 @@
 
 set -Eeuo pipefail
 
-DIRECT_REPO_URL="https://github.com/ylty1516/puppy-stardew-server-updated.git"
-DIRECT_SOURCE_ARCHIVE_URL="https://github.com/ylty1516/puppy-stardew-server-updated/archive/refs/heads/main.tar.gz"
+DIRECT_REPO_URL="https://github.com/ylty1516/ceshi.git"
+DIRECT_SOURCE_ARCHIVE_URL="https://github.com/ylty1516/ceshi/archive/refs/heads/main.tar.gz"
 GITHUB_PROXY_PREFIX="${PUPPY_GITHUB_PROXY_PREFIX:-https://gh.sixyin.com/}"
 REPO_DIR="${PUPPY_STARDEW_DIR:-puppy-stardew-server-updated}"
 BRANCH="${PUPPY_UPDATE_BRANCH:-main}"
@@ -149,10 +149,9 @@ update_with_git() {
 
   cd "$PROJECT_DIR"
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
-  git remote get-url origin >/dev/null 2>&1 || return 1
 
   step "拉取 GitHub 最新代码"
-  git fetch --depth 1 origin "$BRANCH"
+  git fetch --depth 1 "$DIRECT_REPO_URL" "$BRANCH"
 
   dirty_tracked="$(git status --porcelain --untracked-files=no)"
   if [ -n "$dirty_tracked" ]; then
@@ -163,7 +162,7 @@ update_with_git() {
     fi
   fi
 
-  git reset --hard "origin/$BRANCH"
+  git reset --hard FETCH_HEAD
 }
 
 update_with_archive() {
@@ -222,6 +221,31 @@ ensure_runtime_files() {
   if [ "$game_uid" != "1000" ]; then
     warn "data/game 当前所有者不是 UID 1000。若之后游戏下载报磁盘写入失败，请执行：sudo chown -R 1000:1000 data/"
   fi
+}
+
+sync_critical_bundled_mods() {
+  cd "$PROJECT_DIR"
+
+  critical_mods="ServerAutoLoad"
+  for mod_name in $critical_mods; do
+    source_mod="$PROJECT_DIR/docker/mods/$mod_name"
+    target_mod="$PROJECT_DIR/data/game/Mods/$mod_name"
+
+    [ -d "$source_mod" ] || continue
+
+    mkdir -p "$PROJECT_DIR/data/game/Mods"
+    if [ -d "$target_mod" ]; then
+      mkdir -p "$BACKUP_DIR/game-mods"
+      cp -a "$target_mod" "$BACKUP_DIR/game-mods/$mod_name" 2>/dev/null || true
+      rm -rf "$target_mod"
+    fi
+
+    cp -a "$source_mod" "$target_mod"
+    chown -R 1000:1000 "$target_mod" 2>/dev/null || true
+    info "已同步内置关键 Mod：$mod_name"
+  done
+
+  rm -f "$PROJECT_DIR/data/panel/server-autoload-state.json" 2>/dev/null || true
 }
 
 rebuild_and_restart() {
@@ -284,6 +308,7 @@ main() {
   fi
 
   ensure_runtime_files
+  sync_critical_bundled_mods
   rebuild_and_restart
   verify_update
 }

@@ -3,10 +3,10 @@
 
 set -e
 
-DIRECT_REPO_URL="https://github.com/ylty1516/puppy-stardew-server-updated.git"
-DIRECT_RELEASE_ARCHIVE_URL="https://github.com/ylty1516/puppy-stardew-server-updated/releases/latest/download/puppy-stardew-server-updated.tar.gz"
-DIRECT_RELEASE_ZIP_URL="https://github.com/ylty1516/puppy-stardew-server-updated/releases/latest/download/puppy-stardew-server-updated.zip"
-DIRECT_SOURCE_ARCHIVE_URL="https://github.com/ylty1516/puppy-stardew-server-updated/archive/refs/heads/main.tar.gz"
+DIRECT_REPO_URL="https://github.com/ylty1516/ceshi.git"
+DIRECT_RELEASE_ARCHIVE_URL="https://github.com/ylty1516/ceshi/releases/latest/download/puppy-stardew-server-updated.tar.gz"
+DIRECT_RELEASE_ZIP_URL="https://github.com/ylty1516/ceshi/releases/latest/download/puppy-stardew-server-updated.zip"
+DIRECT_SOURCE_ARCHIVE_URL="https://github.com/ylty1516/ceshi/archive/refs/heads/main.tar.gz"
 GITHUB_PROXY_PREFIX="${PUPPY_GITHUB_PROXY_PREFIX:-https://gh.sixyin.com/}"
 if [ "${PUPPY_USE_GITHUB_PROXY:-true}" = "false" ]; then
   GITHUB_PROXY_PREFIX=""

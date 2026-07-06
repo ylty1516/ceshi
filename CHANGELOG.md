@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-06 ServerAutoLoad v1 残留自动修复
+### Bug Fixes
+- 修复服务器持久化 `data/game/Mods/ServerAutoLoad` 里残留旧版 `1.0.0` 时，游戏能进存档但不会进入多人 Host 模式的问题；启动同步内置 Mod 时会识别旧版/旧配置并替换为 v2 原生 `Co-op -> Host` 配置。
+- Web 一键更新和 `update.sh` 会在重建 Docker 前主动同步关键内置 Mod `ServerAutoLoad` 到持久化游戏目录，并备份旧目录，避免旧 DLL 继续覆盖新版镜像。
+- 诊断页 `Save slot and cabin audit` 现在会显示 ServerAutoLoad 版本，并在检测到 v1 旧版或 `EnableAutoLoad` 旧配置字段时直接报错。
+### Test Release
+- 测试仓库发布包默认安装/更新来源切换到 `ylty1516/ceshi`，便于先在测试仓库验证修复。
+
 ## 2026-07-06 存档席位审计与 SAVE_NAME 引号修复
 ### Bug Fixes
 - 修复 Web 面板写入 `runtime.env` 后入口脚本原样导出单引号的问题；`SAVE_NAME='999'` 不会再变成游戏进程里的字面量 `'999'`，避免 ServerAutoLoad 找不到真实存档。

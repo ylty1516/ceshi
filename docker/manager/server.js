@@ -26,7 +26,8 @@ const UNINSTALL_CONTAINER = process.env.UNINSTALL_CONTAINER || 'puppy-stardew-un
 const UPDATE_IMAGE = process.env.UPDATE_IMAGE || 'puppy-stardew-manager:local';
 const UPDATE_BRANCH = process.env.PUPPY_UPDATE_BRANCH || 'main';
 const UPDATE_QUEUED_TIMEOUT_MS = parseInt(process.env.PUPPY_UPDATE_QUEUED_TIMEOUT_MS || '90000', 10);
-const DIRECT_SOURCE_ARCHIVE_URL = 'https://github.com/ylty1516/puppy-stardew-server-updated/archive/refs/heads/main.tar.gz';
+const DIRECT_REPO_URL = 'https://github.com/ylty1516/ceshi.git';
+const DIRECT_SOURCE_ARCHIVE_URL = 'https://github.com/ylty1516/ceshi/archive/refs/heads/main.tar.gz';
 const GITHUB_PROXY_PREFIX = process.env.PUPPY_GITHUB_PROXY_PREFIX || 'https://gh.sixyin.com/';
 const ALLOWED_SERVICES = new Set(['stardew-server']);
 const SERVICE_CONTAINERS = {
@@ -468,6 +469,7 @@ COMPOSE_FILE=${shellQuote(COMPOSE_FILE)}
 STATUS_FILE=${shellQuote(UPDATE_STATUS_FILE)}
 LOG_FILE=${shellQuote(UPDATE_LOG_FILE)}
 BRANCH=${shellQuote(UPDATE_BRANCH)}
+DIRECT_REPO_URL=${shellQuote(DIRECT_REPO_URL)}
 DIRECT_SOURCE_ARCHIVE_URL=${shellQuote(DIRECT_SOURCE_ARCHIVE_URL)}
 PROXIED_SOURCE_ARCHIVE_URL=${shellQuote(proxiedArchiveUrl)}
 FORCE_LOCAL_OVERWRITE=${shellQuote(force)}
@@ -568,7 +570,7 @@ download_file() {
 set_phase "download" "拉取 GitHub 最新代码"
 if [ -d .git ] && command -v git >/dev/null 2>&1; then
   git config --global --add safe.directory "$PROJECT_DIR" 2>/dev/null || true
-  git fetch --depth 1 origin "$BRANCH"
+  git fetch --depth 1 "$DIRECT_REPO_URL" "$BRANCH"
   dirty="$(git status --porcelain --untracked-files=no)"
   if [ -n "$dirty" ]; then
     git diff > "$BACKUP_DIR/local-tracked-changes.patch" || true
@@ -580,7 +582,7 @@ if [ -d .git ] && command -v git >/dev/null 2>&1; then
       exit 30
     fi
   fi
-  git reset --hard "origin/$BRANCH"
+  git reset --hard FETCH_HEAD
 else
   tmp_archive="$(mktemp)"
   tmp_dir="$(mktemp -d)"
@@ -619,6 +621,22 @@ if ! grep -q '^MAX_PLAYERS=' .env 2>/dev/null; then
 fi
 chmod +x ./*.sh 2>/dev/null || true
 mkdir -p data/saves data/game data/steam data/logs data/backups data/custom-mods data/panel data/meta data/secrets
+
+set_phase "critical_mod_sync" "同步关键内置 Mod"
+for mod_name in ServerAutoLoad; do
+  source_mod="$PROJECT_DIR/docker/mods/$mod_name"
+  target_mod="$PROJECT_DIR/data/game/Mods/$mod_name"
+  [ -d "$source_mod" ] || continue
+  mkdir -p "$PROJECT_DIR/data/game/Mods" "$BACKUP_DIR/game-mods"
+  if [ -d "$target_mod" ]; then
+    cp -a "$target_mod" "$BACKUP_DIR/game-mods/$mod_name" 2>/dev/null || true
+    rm -rf "$target_mod"
+  fi
+  cp -a "$source_mod" "$target_mod"
+  chown -R 1000:1000 "$target_mod" 2>/dev/null || true
+  rm -f "$PROJECT_DIR/data/panel/server-autoload-state.json" 2>/dev/null || true
+  echo "Synced bundled critical mod: $mod_name"
+done
 
 set_phase "rebuild" "重建并重启 Docker 服务"
 if [ "$NO_BUILD" != "true" ]; then
