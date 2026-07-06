@@ -275,6 +275,12 @@ ServerAutoLoad v2 会在启动时自动打开星露谷原生 `Co-op -> Host` 存
 curl -fsSL https://gh.sixyin.com/https://github.com/ylty1516/ceshi/releases/latest/download/install.sh | bash
 ```
 
+已有旧版/正式版面板，想直接更新到测试版面板，单独运行这一行：
+
+```bash
+curl -fsSL https://gh.sixyin.com/https://github.com/ylty1516/ceshi/releases/latest/download/update.sh -o /tmp/ylty-update.sh && bash /tmp/ylty-update.sh
+```
+
 脚本会优先下载 GitHub Release 里的项目压缩包，支持 `.tar.gz` 和 `.zip` 两种 release 资产；失败时再回退到 main 分支源码压缩包和浅克隆。它会自动生成 `.env`、初始化 `data/saves`、`data/game`、`data/meta`、`data/secrets` 等目录权限，并询问是否立即启动 Docker 服务。
 
 如果代理不可用，可以使用 GitHub 原地址：
@@ -355,7 +361,7 @@ docker compose up -d --build
 如果旧版面板还没有 Web 一键更新按钮，或者想直接安全重装/修复安装，可以复制这一行运行：
 
 ```bash
-(curl -fsSL https://gh.sixyin.com/https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh || curl -fsSL https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh) | bash
+curl -fsSL https://gh.sixyin.com/https://github.com/ylty1516/ceshi/releases/latest/download/update.sh -o /tmp/ylty-update.sh && bash /tmp/ylty-update.sh
 ```
 
 这条命令会下载最新版更新脚本，自动备份 `.env`、`docker-compose.yml`、启动偏好和存档，然后拉取最新代码并重建 Docker 服务。存档备份会排除运行时 `ErrorLogs/SMAPI-latest.txt`，避免正在写入的 SMAPI 日志把更新误判为失败；`data/`、`secrets/` 和玩家上传内容会保留，不会当成全新安装直接清空。
@@ -363,7 +369,7 @@ docker compose up -d --build
 如果项目目录不在默认位置，先进入项目目录再执行：
 
 ```bash
-cd /你的项目目录 && (curl -fsSL https://gh.sixyin.com/https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh || curl -fsSL https://raw.githubusercontent.com/ylty1516/puppy-stardew-server-updated/main/update.sh) | bash
+cd /你的项目目录 && curl -fsSL https://gh.sixyin.com/https://github.com/ylty1516/ceshi/releases/latest/download/update.sh -o /tmp/ylty-update.sh && bash /tmp/ylty-update.sh
 ```
 
 完成这次以后，后续更新就可以直接在 Web 面板里点按钮，不用再进 SSH。
