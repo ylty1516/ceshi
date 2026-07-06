@@ -146,20 +146,24 @@ const translations = {
     'autoPause.note.waiting': '服务器无人在线，正在等待 {seconds}/{delay} 秒后暂停。',
     'autoPause.note.manual': '管理员手动暂停优先，自动暂停不会覆盖它。',
     'autoPause.note.blocked': '当前状态不适合切换暂停：{reason}',
-    'timePause.running': '正常流动',
+    'timePause.running': '未暂停',
     'timePause.paused': '已暂停',
-    'timePause.source.running': '游戏内时间正在正常流动。',
+    'timePause.source.running': '未检测到暂停来源，是否真正推进以游戏时间卡片为准。',
     'timePause.source.manual': '管理员手动暂停已开启，游戏内时间被冻结。',
     'timePause.source.auto_empty': '自动空服暂停正在接管，当前无人在线导致时间冻结。',
     'timePause.source.single_menu': '单个真实玩家打开背包，本地上报 Mod 触发时间冻结。',
     'timePause.source.game': 'SMAPI 报告 Game1.paused=true，但没有匹配到面板暂停来源。',
     'timePause.source.inferred': '面板从日志或控制文件推断为暂停，等待 SMAPI 状态桥确认。',
     'timePause.reason': '原因：{reason}',
-    'gameClock.state.running': '\u6b63\u5728\u6d41\u52a8', 'gameClock.state.paused': '\u5df2\u6682\u505c',
+    'gameClock.state.running': '\u6b63\u5728\u6d41\u52a8', 'gameClock.state.checking': '\u89c2\u5bdf\u8df3\u65f6',
+    'gameClock.state.stalled': '\u65f6\u95f4\u672a\u63a8\u8fdb', 'gameClock.state.blocked': '\u65f6\u95f4\u53d7\u963b',
+    'gameClock.state.paused': '\u5df2\u6682\u505c',
     'gameClock.state.stopped': '\u6e38\u620f\u672a\u8fd0\u884c', 'gameClock.state.missing': '\u7b49\u5f85\u72b6\u6001\u6865',
     'gameClock.state.stale': '\u72b6\u6001\u8fc7\u671f', 'gameClock.state.not_ready': '\u5b58\u6863\u672a\u5c31\u7eea',
     'gameClock.state.unknown': '\u672a\u77e5',
     'gameClock.age': '\u5237\u65b0 {seconds} \u79d2\u524d',
+    'gameClock.motionChanged': '\u6700\u8fd1\u8df3\u65f6 {seconds} \u79d2\u524d',
+    'gameClock.motionUnchanged': '\u672a\u8df3\u65f6 {seconds} \u79d2',
     'gameClock.meta': '\u65e5\u671f {date} ? \u65f6\u95f4 {time}',
     'gameClock.blockers': '\u963b\u585e\uff1a{blockers}',
     'dash.viewLogs': '查看日志', 'dash.restart': '重启服务器', 'dash.backup': '立即备份', 'dash.updatePanel': '更新面板',
@@ -512,20 +516,24 @@ const translations = {
     'autoPause.note.waiting': 'No players online. Pausing after {seconds}/{delay}s.',
     'autoPause.note.manual': 'Manual pause has priority and will not be overridden.',
     'autoPause.note.blocked': 'Pause switching is blocked by the current state: {reason}',
-    'timePause.running': 'Time running',
+    'timePause.running': 'Not paused',
     'timePause.paused': 'Paused',
-    'timePause.source.running': 'In-game time is moving normally.',
+    'timePause.source.running': 'No pause source is active. Check the game clock card to confirm time is advancing.',
     'timePause.source.manual': 'Manual pause is enabled by the panel, so in-game time is frozen.',
     'timePause.source.auto_empty': 'Automatic empty-server pause is holding the game time frozen.',
     'timePause.source.single_menu': 'A solo real player opened their backpack and the reporter mod froze time.',
     'timePause.source.game': 'SMAPI reports Game1.paused=true, but no panel pause owner claimed it.',
     'timePause.source.inferred': 'The panel inferred a pause from logs or control files while waiting for the state bridge.',
     'timePause.reason': 'Reason: {reason}',
-    'gameClock.state.running': 'Running', 'gameClock.state.paused': 'Paused',
+    'gameClock.state.running': 'Running', 'gameClock.state.checking': 'Checking tick',
+    'gameClock.state.stalled': 'Time not advancing', 'gameClock.state.blocked': 'Time blocked',
+    'gameClock.state.paused': 'Paused',
     'gameClock.state.stopped': 'Game stopped', 'gameClock.state.missing': 'Waiting for bridge',
     'gameClock.state.stale': 'State stale', 'gameClock.state.not_ready': 'Save not ready',
     'gameClock.state.unknown': 'Unknown',
     'gameClock.age': 'updated {seconds}s ago',
+    'gameClock.motionChanged': 'advanced {seconds}s ago',
+    'gameClock.motionUnchanged': 'unchanged for {seconds}s',
     'gameClock.meta': 'Date {date} ? Time {time}',
     'gameClock.blockers': 'Blockers: {blockers}',
     'dash.viewLogs': 'View Logs', 'dash.restart': 'Restart Server', 'dash.backup': 'Backup Now', 'dash.updatePanel': 'Update Panel',
@@ -1556,6 +1564,12 @@ function updateGameClockUI(gameClock, data = {}) {
   const ageText = typeof clock.ageSeconds === 'number'
     ? tf('gameClock.age', { seconds: String(clock.ageSeconds) })
     : '';
+  const motion = clock.motion || {};
+  const motionText = typeof motion.lastChangedSeconds === 'number'
+    ? tf('gameClock.motionChanged', { seconds: String(motion.lastChangedSeconds) })
+    : (typeof motion.unchangedSeconds === 'number'
+      ? tf('gameClock.motionUnchanged', { seconds: String(motion.unchangedSeconds) })
+      : '');
   const sourceKey = `timePause.source.${clock.source || 'unknown'}`;
   const sourceText = t(sourceKey) === sourceKey ? (clock.reason || clock.source || '') : t(sourceKey);
   const blockers = [];
@@ -1568,7 +1582,7 @@ function updateGameClockUI(gameClock, data = {}) {
 
   const tone = state === 'running'
     ? 'ok'
-    : (state === 'paused' || state === 'not_ready' ? 'warn' : 'error');
+    : (state === 'paused' || state === 'not_ready' || state === 'checking' || state === 'blocked' ? 'warn' : 'error');
 
   const statValue = document.getElementById('stat-game-time');
   if (statValue) {
@@ -1578,7 +1592,7 @@ function updateGameClockUI(gameClock, data = {}) {
 
   const statNote = document.getElementById('stat-game-time-note');
   if (statNote) {
-    statNote.textContent = [stateText, ageText].filter(Boolean).join(' · ') || '--';
+    statNote.textContent = [stateText, ageText, motionText].filter(Boolean).join(' · ') || '--';
   }
 
   const detailValue = document.getElementById('detail-game-clock');
@@ -1592,6 +1606,7 @@ function updateGameClockUI(gameClock, data = {}) {
     const parts = [
       tf('gameClock.meta', { date: dateLabel, time: timeLabel }),
       ageText,
+      motionText,
     ];
     if (sourceText) {
       parts.push(sourceText);

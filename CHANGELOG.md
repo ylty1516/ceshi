@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-06 游戏时间推进检测修复
+### Bug Fixes
+- 修复仪表盘游戏时间卡片只根据 `Game1.paused=false` 就显示“正在流动”的误判；现在会比较连续状态里的游戏日期/时间，只有最近真实跳时才显示正在流动。
+- 当 SMAPI 状态桥仍在刷新但游戏时间长时间不变时，面板会显示“时间未推进”并展示未跳时秒数，方便区分“状态刷新正常”和“游戏内时间真的在走”。
+- 手动暂停详情文案改为“未暂停”，避免把“没有暂停来源”误解成“时间一定在推进”。
+
 ## 2026-07-06 Auto Pause Sleep-State Fix and Live Time Monitor
 ### New Features
 - The dashboard now shows a live in-game time card with date, pause/running state, SMAPI bridge refresh age, and current blockers such as saving, sleep transitions, events, or open menus.

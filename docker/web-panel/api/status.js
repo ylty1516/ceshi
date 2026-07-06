@@ -36,6 +36,13 @@ const STATUS_LOG_TAIL_BYTES = Number.isFinite(configuredStatusLogTailBytes) && c
 const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeoutMs) && configuredCommandTimeoutMs > 0
   ? configuredCommandTimeoutMs
   : 1500;
+const CLOCK_RECENT_CHANGE_SECONDS = 20;
+const CLOCK_STALL_SECONDS = 45;
+const clockMotion = {
+  signature: '',
+  firstSeenAt: 0,
+  lastChangedAt: 0,
+};
 
 function readRecentLogLines(limit = 400) {
   try {
@@ -460,12 +467,79 @@ function formatGameTimeLabel(timeOfDay) {
   return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
 }
 
+function buildClockSignature(gameState, rawTime) {
+  return [
+    gameState.year || 0,
+    gameState.season || '',
+    gameState.day || 0,
+    rawTime || 0,
+  ].join('|');
+}
+
+function trackClockMotion(gameState, worldReady, rawTime) {
+  const now = Date.now();
+  if (!worldReady || !Number.isFinite(rawTime) || rawTime <= 0) {
+    clockMotion.signature = '';
+    clockMotion.firstSeenAt = 0;
+    clockMotion.lastChangedAt = 0;
+    return {
+      observed: false,
+      changed: false,
+      unchangedSeconds: null,
+      lastChangedSeconds: null,
+      recentChangeSeconds: CLOCK_RECENT_CHANGE_SECONDS,
+      stallSeconds: CLOCK_STALL_SECONDS,
+    };
+  }
+
+  const signature = buildClockSignature(gameState, rawTime);
+  if (clockMotion.signature !== signature) {
+    const hadPreviousSample = Boolean(clockMotion.signature);
+    clockMotion.signature = signature;
+    clockMotion.firstSeenAt = now;
+    clockMotion.lastChangedAt = hadPreviousSample ? now : 0;
+    return {
+      observed: true,
+      changed: hadPreviousSample,
+      unchangedSeconds: 0,
+      lastChangedSeconds: hadPreviousSample ? 0 : null,
+      recentChangeSeconds: CLOCK_RECENT_CHANGE_SECONDS,
+      stallSeconds: CLOCK_STALL_SECONDS,
+    };
+  }
+
+  if (!clockMotion.firstSeenAt) {
+    clockMotion.firstSeenAt = now;
+    clockMotion.lastChangedAt = 0;
+  }
+
+  const unchangedSeconds = Math.max(0, Math.floor((now - clockMotion.firstSeenAt) / 1000));
+  const lastChangedSeconds = clockMotion.lastChangedAt
+    ? Math.max(0, Math.floor((now - clockMotion.lastChangedAt) / 1000))
+    : null;
+
+  return {
+    observed: true,
+    changed: false,
+    unchangedSeconds,
+    lastChangedSeconds,
+    recentChangeSeconds: CLOCK_RECENT_CHANGE_SECONDS,
+    stallSeconds: CLOCK_STALL_SECONDS,
+  };
+}
+
 function buildGameClockStatus(status) {
   const gameState = status.gameState || {};
   const bridgeFresh = gameState.available === true && gameState.stale !== true;
   const worldReady = bridgeFresh && gameState.worldReady === true;
   const rawTime = Number.isFinite(gameState.timeOfDay) ? gameState.timeOfDay : 0;
   const paused = status.timePause && status.timePause.paused === true;
+  const motion = trackClockMotion(gameState, worldReady, rawTime);
+  const hasClockBlocker = gameState.saving === true
+    || gameState.eventUp === true
+    || gameState.saveOnNewDay === true
+    || gameState.sleepInProgress === true
+    || (typeof gameState.activeMenu === 'string' && gameState.activeMenu.length > 0);
 
   let state = 'unknown';
   if (!status.gameRunning) {
@@ -478,8 +552,14 @@ function buildGameClockStatus(status) {
     state = 'not_ready';
   } else if (paused) {
     state = 'paused';
-  } else {
+  } else if (motion.lastChangedSeconds !== null && motion.lastChangedSeconds <= CLOCK_RECENT_CHANGE_SECONDS) {
     state = 'running';
+  } else if (hasClockBlocker) {
+    state = 'blocked';
+  } else if (motion.unchangedSeconds !== null && motion.unchangedSeconds >= CLOCK_STALL_SECONDS) {
+    state = 'stalled';
+  } else {
+    state = 'checking';
   }
 
   return {
@@ -494,6 +574,7 @@ function buildGameClockStatus(status) {
     dateLabel: worldReady ? formatGameDateLabel(gameState) : (status.day && status.day !== 'Unknown' ? status.day : ''),
     updatedAt: gameState.updatedAt || status.timestamp,
     ageSeconds: Number.isFinite(gameState.ageSeconds) ? gameState.ageSeconds : null,
+    motion,
     saving: gameState.saving === true,
     eventUp: gameState.eventUp === true,
     activeMenu: typeof gameState.activeMenu === 'string' ? gameState.activeMenu : '',
