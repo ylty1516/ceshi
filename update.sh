@@ -11,6 +11,7 @@ BRANCH="${PUPPY_UPDATE_BRANCH:-main}"
 FORCE_LOCAL_OVERWRITE="${PUPPY_UPDATE_FORCE:-false}"
 SKIP_SAVE_BACKUP="${PUPPY_UPDATE_SKIP_SAVE_BACKUP:-false}"
 NO_BUILD="${PUPPY_UPDATE_NO_BUILD:-false}"
+FORCE_SERVER_GAME_UPDATE="${PUPPY_UPDATE_GAME:-true}"
 
 if [ "${PUPPY_USE_GITHUB_PROXY:-true}" = "false" ]; then
   GITHUB_PROXY_PREFIX=""
@@ -248,6 +249,23 @@ sync_critical_bundled_mods() {
   rm -f "$PROJECT_DIR/data/panel/server-autoload-state.json" 2>/dev/null || true
 }
 
+request_server_game_update() {
+  cd "$PROJECT_DIR"
+
+  if [ "$FORCE_SERVER_GAME_UPDATE" != "true" ]; then
+    warn "已按 PUPPY_UPDATE_GAME=false 跳过服务器游戏本体校验。"
+    return
+  fi
+
+  mkdir -p "$PROJECT_DIR/data/panel"
+  {
+    printf 'requested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf 'reason=panel_update\n'
+  } > "$PROJECT_DIR/data/panel/force-game-update"
+  chown 1000:1000 "$PROJECT_DIR/data/panel/force-game-update" 2>/dev/null || true
+  info "已标记下次启动强制执行 SteamCMD app_update 413150 validate，避免服务器游戏版本落后于玩家本地。"
+}
+
 rebuild_and_restart() {
   if [ "$NO_BUILD" = "true" ]; then
     warn "已按 PUPPY_UPDATE_NO_BUILD=true 跳过 Docker 重建。"
@@ -309,6 +327,7 @@ main() {
 
   ensure_runtime_files
   sync_critical_bundled_mods
+  request_server_game_update
   rebuild_and_restart
   verify_update
 }

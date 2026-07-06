@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-06 SMAPI 版本与嵌套 Mod 重复修复
+### Bug Fixes
+- 修复服务器持久化游戏目录仍运行旧 SMAPI 的问题：镜像内置 SMAPI 升级到 4.5.2，启动时会重新安装内置 SMAPI，避免 `data/game` 残留旧版本导致新 Mod 无法加载。
+- 一键更新和 Web 更新会标记下次启动执行 `SteamCMD app_update 413150 validate`，确保服务器星露谷本体跟随 Steam 校验更新，而不是只更新面板代码。
+- 修复通过面板上传 Mod 组合包后，启动脚本再次解压原始 zip 导致 `Mods/Mods/Mods/...` 嵌套重复的问题；面板已安装过的 zip 会被跳过。
+- 启动时会检测并备份 `Mods/Mods` / `Mods/mods` 嵌套目录，将缺失的嵌套 Mod 提升到顶层后删除嵌套目录，避免 SMAPI 报 “multiple copies of this mod installed”。
+- 日志诊断新增“重复 Mod 副本”和“SMAPI 版本过旧”两类明确原因，方便定位联机时假性“无空闲位置”的根因。
+
 ## 2026-07-06 游戏时间推进检测修复
 ### Bug Fixes
 - 修复仪表盘游戏时间卡片只根据 `Game1.paused=false` 就显示“正在流动”的误判；现在会比较连续状态里的游戏日期/时间，只有最近真实跳时才显示正在流动。

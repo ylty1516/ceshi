@@ -638,6 +638,15 @@ for mod_name in ServerAutoLoad; do
   echo "Synced bundled critical mod: $mod_name"
 done
 
+set_phase "game_update_marker" "标记服务器游戏本体校验"
+mkdir -p "$PROJECT_DIR/data/panel"
+{
+  printf 'requested_at=%s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  printf 'reason=web_panel_update\\n'
+} > "$PROJECT_DIR/data/panel/force-game-update"
+chown 1000:1000 "$PROJECT_DIR/data/panel/force-game-update" 2>/dev/null || true
+echo "Marked next server start to run SteamCMD app_update 413150 validate."
+
 set_phase "rebuild" "重建并重启 Docker 服务"
 if [ "$NO_BUILD" != "true" ]; then
   docker compose -f "$COMPOSE_FILE" --project-directory "$PROJECT_DIR" up -d --build --remove-orphans

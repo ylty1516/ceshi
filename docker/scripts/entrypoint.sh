@@ -17,6 +17,8 @@ PANEL_ENV_FILE=${ENV_FILE:-/home/steam/web-panel/data/runtime.env}
 PUPPY_META_DIR=${PUPPY_META_DIR:-/home/steam/web-panel/data/meta}
 ORCHESTRATION_STATE_FILE=${ORCHESTRATION_STATE_FILE:-$PUPPY_META_DIR/orchestration-state.json}
 STEAM_JSON_SECRET=${STEAM_JSON_SECRET:-/home/steam/secrets/steam.json}
+FORCE_STEAM_UPDATE_MARKER=${FORCE_STEAM_UPDATE_MARKER:-/home/steam/web-panel/data/panel/force-game-update}
+STEAM_UPDATE_ON_START=${STEAM_UPDATE_ON_START:-false}
 
 if [ ! -f "$PANEL_ENV_FILE" ] && [ -f "/home/steam/.env" ]; then
     PANEL_ENV_FILE="/home/steam/.env"
@@ -420,7 +422,7 @@ download_game_via_steam() {
     DOWNLOAD_EXIT_CODE=$?
 
     # Check result
-    if [ -f "/home/steam/stardewvalley/StardewValley" ]; then
+    if [ "$DOWNLOAD_EXIT_CODE" -eq 0 ] && [ -f "/home/steam/stardewvalley/StardewValley" ]; then
         log_info "✅ Game downloaded successfully!"
         log_info "✅ 游戏下载完成！"
         return 0
@@ -435,6 +437,38 @@ download_game_via_steam() {
         log_error "  4. Steam API rate limit / Steam API 速率限制"
         return 1
     fi
+}
+
+cleanup_nested_mod_folders() {
+    local mods_root="/home/steam/stardewvalley/Mods"
+    local backup_root="/home/steam/web-panel/data/mod-backups/nested-mods-$(date +%Y%m%d-%H%M%S)"
+
+    [ -d "$mods_root" ] || return 0
+
+    for nested_root in "$mods_root/Mods" "$mods_root/mods"; do
+        [ -d "$nested_root" ] || continue
+
+        log_warn "Detected nested Mods folder: $nested_root"
+        log_warn "检测到嵌套 Mods 目录：$nested_root"
+        mkdir -p "$backup_root"
+        cp -a "$nested_root" "$backup_root/" 2>/dev/null || true
+
+        while IFS= read -r manifest_file; do
+            mod_dir="$(dirname "$manifest_file")"
+            mod_name="$(basename "$mod_dir")"
+            [ -n "$mod_name" ] || continue
+            [ "$mod_name" = "Mods" ] && continue
+
+            if [ ! -e "$mods_root/$mod_name" ]; then
+                log_info "  Promoting nested mod: $mod_name"
+                cp -a "$mod_dir" "$mods_root/$mod_name" 2>/dev/null || true
+            fi
+        done < <(find "$nested_root" -mindepth 1 -maxdepth 5 -name manifest.json -type f 2>/dev/null)
+
+        rm -rf "$nested_root"
+        log_warn "Removed nested Mods folder after backup: $backup_root"
+        log_warn "已备份并删除嵌套 Mods 目录：$backup_root"
+    done
 }
 
 # =============================================
@@ -620,21 +654,36 @@ fi
 
 log_info "Steam credentials configured"
 
-# Step 2: Download game if needed
-if [ ! -f "/home/steam/stardewvalley/StardewValley" ]; then
+force_game_update=false
+if [ "${STEAM_UPDATE_ON_START}" = "true" ] || [ -f "$FORCE_STEAM_UPDATE_MARKER" ]; then
+    force_game_update=true
+fi
+
+# Step 2: Download or validate game if needed
+if [ ! -f "/home/steam/stardewvalley/StardewValley" ] || [ "$force_game_update" = "true" ]; then
     write_orchestration_state "LOADING" "game_download" "Stardew Valley files are missing; downloading through SteamCMD."
-    log_step "Step 2: Downloading Stardew Valley..."
-    log_warn "Game files not found. Downloading from Steam..."
-    log_warn "未找到游戏文件。正在从 Steam 下载..."
-    log_warn "This will take 5-10 minutes depending on your connection."
-    log_warn "根据网络情况，此过程需要 5-10 分钟。"
+    if [ "$force_game_update" = "true" ]; then
+        write_orchestration_state "LOADING" "game_update" "Forcing SteamCMD app_update 413150 validate before launch."
+        log_step "Step 2: Validating Stardew Valley through Steam..."
+        log_warn "Force game update marker detected. SteamCMD will validate and update Stardew Valley."
+        log_warn "检测到强制游戏更新标记，SteamCMD 将校验并更新星露谷本体。"
+    else
+        log_step "Step 2: Downloading Stardew Valley..."
+        log_warn "Game files not found. Downloading from Steam..."
+        log_warn "未找到游戏文件。正在从 Steam 下载..."
+        log_warn "This will take 5-10 minutes depending on your connection."
+        log_warn "根据网络情况，此过程需要 5-10 分钟。"
+    fi
     log_warn ""
 
-    # Clean up any existing Steam cache
-    log_info "Cleaning Steam cache..."
-    rm -rf /home/steam/Steam/config/* 2>/dev/null || true
-    rm -rf /home/steam/Steam/logs/* 2>/dev/null || true
-    rm -rf /tmp/steam* 2>/dev/null || true
+    if [ "$force_game_update" != "true" ]; then
+        # Clean up any existing Steam cache only on first install. Keeping it on
+        # update avoids unnecessary Steam Guard prompts for existing servers.
+        log_info "Cleaning Steam cache..."
+        rm -rf /home/steam/Steam/config/* 2>/dev/null || true
+        rm -rf /home/steam/Steam/logs/* 2>/dev/null || true
+        rm -rf /tmp/steam* 2>/dev/null || true
+    fi
 
     # Download game (handles Steam Guard automatically)
     if ! download_game_via_steam; then
@@ -642,6 +691,7 @@ if [ ! -f "/home/steam/stardewvalley/StardewValley" ]; then
         log_error "游戏下载失败。容器将退出。"
         fail_startup "game_download_failed" "Stardew Valley download failed. Check Steam Guard, Steam credentials, network and disk space." 1
     fi
+    rm -f "$FORCE_STEAM_UPDATE_MARKER" 2>/dev/null || true
 else
     write_orchestration_state "VERIFYING" "game_files_present" "Stardew Valley files found."
     log_step "Step 2: Game files found, skipping download"
@@ -653,20 +703,17 @@ fi
 log_step "Step 3: Installing SMAPI mod loader..."
 write_orchestration_state "VERIFYING" "smapi_install" "Checking SMAPI installation."
 
-if [ ! -f "/home/steam/stardewvalley/StardewModdingAPI" ]; then
-    log_info "Installing SMAPI..."
-    cd /home/steam
-    echo "1" | dotnet smapi/SMAPI*/internal/linux/SMAPI.Installer.dll --install --game-path /home/steam/stardewvalley
+log_info "Installing bundled SMAPI to avoid stale persistent game files..."
+cd /home/steam
+echo "1" | dotnet smapi/SMAPI*/internal/linux/SMAPI.Installer.dll --install --game-path /home/steam/stardewvalley
 
-    if [ $? -ne 0 ]; then
-        log_error "Failed to install SMAPI!"
-        log_error "SMAPI 安装失败！"
-        fail_startup "smapi_install_failed" "SMAPI installation failed. Check the downloaded game files and SMAPI installer directory." 1
-    fi
-
-    log_info "✓ SMAPI installed successfully!"
+if [ $? -ne 0 ]; then
+    log_error "Failed to install SMAPI!"
+    log_error "SMAPI 安装失败！"
+    fail_startup "smapi_install_failed" "SMAPI installation failed. Check the downloaded game files and bundled SMAPI installer." 1
 else
-    log_info "✓ SMAPI already installed"
+    bundled_smapi_version="$(cat /home/steam/smapi-version.txt 2>/dev/null || echo unknown)"
+    log_info "✓ SMAPI installed/updated successfully (bundled $bundled_smapi_version)"
 fi
 
 # Step 4: Install mods
@@ -683,6 +730,8 @@ if [ -d "/home/steam/preinstalled-mods" ]; then
         log_info "  ✓ $mod"
     done
 fi
+
+cleanup_nested_mod_folders
 
 # Step 4.5: Install user-provided mods from custom-mods volume
 # 步骤 4.5：从 custom-mods 卷安装用户提供的模组
@@ -702,6 +751,12 @@ if [ -d "$CUSTOM_MODS_DIR" ] && [ "$(ls -A "$CUSTOM_MODS_DIR" 2>/dev/null)" ]; t
             log_info "  Installing mod: $mod_name"
             cp -r "$mod_entry" "/home/steam/stardewvalley/Mods/$mod_name"
         elif [[ "$mod_entry" == *.zip ]]; then
+            metadata_file="${mod_entry%.zip}.panel-meta.json"
+            if [ -f "$metadata_file" ]; then
+                log_info "  Skipping managed archive already installed by panel: $mod_name"
+                continue
+            fi
+
             # It's a zip file - extract to Mods/
             log_info "  Extracting mod: $mod_name"
             unzip -q -o "$mod_entry" -d "/home/steam/stardewvalley/Mods/" 2>/dev/null || {
@@ -709,6 +764,7 @@ if [ -d "$CUSTOM_MODS_DIR" ] && [ "$(ls -A "$CUSTOM_MODS_DIR" 2>/dev/null)" ]; t
             }
         fi
     done
+    cleanup_nested_mod_folders
     log_info "✓ Custom mods installed"
 fi
 

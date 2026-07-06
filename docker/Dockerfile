@@ -8,6 +8,7 @@
 
 ARG SERVER_BASE_IMAGE=ubuntu:22.04
 FROM ${SERVER_BASE_IMAGE}
+ARG SMAPI_VERSION=4.5.2
 
 # Prevent interactive prompts during installation
 # 避免安装过程中的交互提示
@@ -79,8 +80,9 @@ USER steam
 # 在单层中下载 SteamCMD 和 SMAPI，清理下载文件
 RUN wget -qO- 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | \
     tar zxvf - -C /home/steam/steamcmd && \
-    wget -qO smapi.zip 'https://github.com/Pathoschild/SMAPI/releases/download/4.3.2/SMAPI-4.3.2-installer.zip' && \
+    wget -qO smapi.zip "https://github.com/Pathoschild/SMAPI/releases/download/${SMAPI_VERSION}/SMAPI-${SMAPI_VERSION}-installer.zip" && \
     unzip -q smapi.zip -d smapi && \
+    printf '%s\n' "$SMAPI_VERSION" > /home/steam/smapi-version.txt && \
     rm smapi.zip
 
 # Copy pre-configured mods to a temporary location
