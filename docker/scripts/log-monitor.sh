@@ -49,6 +49,9 @@ classify_issue() {
     if echo "$line" | grep -qiE "Save directory not found|No valid Stardew Valley save|SaveGameInfo|SAVE_NAME.*not found|save.*not found|failed.*load.*save"; then
         echo "SAVE_LOAD_FAILED"; return 0
     fi
+    if echo "$line" | grep -qiE "LevelUpMenu|Skipping level up menu|level up menu"; then
+        echo "LEVEL_UP_MENU_BLOCKING_NIGHT"; return 0
+    fi
     if echo "$line" | grep -qiE "Mod crashed|failed loading mod|failed to load.*mod|Harmony|manifest.json|Exception.*(mod|SMAPI|Harmony)"; then
         echo "MOD_EXCEPTION"; return 0
     fi

@@ -11,6 +11,8 @@
   "PauseWhenSingleFarmhandOpensMenu": true,
   "SingleFarmhandMenuPauseTimeoutSeconds": 10,
   "InstantSleepWhenReady": true,
+  "AutoDismissNonProfessionLevelUpMenus": true,
+  "LevelUpAutoDismissDelayTicks": 90,
   "HideMethod": "warp",
   "WarpLocation": "Desert",
   "WarpX": 0,

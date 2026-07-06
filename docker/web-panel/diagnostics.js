@@ -76,6 +76,15 @@ const RULES = [
     pattern: /needs SMAPI\s+\d+\.\d+(?:\.\d+)?\s+or later|Please update SMAPI to the latest version/i,
   },
   {
+    code: 'LEVEL_UP_MENU_BLOCKING_NIGHT',
+    severity: 'warn',
+    category: 'automation',
+    title: 'Level-up menu is blocking the night transition',
+    cause: 'The hidden host reached a level-up screen after sleeping, so the save/day transition can appear stuck until the menu is dismissed.',
+    action: 'Update to AutoHideHost v1.4.1 or newer. It auto-dismisses plain level-up notices but leaves profession choices open for manual selection.',
+    pattern: /LevelUpMenu|Skipping level up menu|level up menu/i,
+  },
+  {
     code: 'MOD_EXCEPTION',
     severity: 'error',
     category: 'mod',

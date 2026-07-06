@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-06 夜间升级菜单阻塞修复
+### Bug Fixes
+- 修复隐藏房主睡觉后遇到普通 `LevelUpMenu` 升级提示时，服务器无人点击确认导致日夜结算卡住、面板显示状态桥过期/游戏时间不推进的问题。
+- AutoHideHost 升级到 `1.4.1`：普通升级提示会延迟自动点击 OK，让服务器继续进入下一天；职业二选一/职业选择界面不会自动选择，避免乱改房主职业路线。
+- 日志诊断新增 `LEVEL_UP_MENU_BLOCKING_NIGHT`，能把 `LevelUpMenu` / `Skipping level up menu` 明确归因为夜间结算阻塞。
+
 ## 2026-07-06 SMAPI 版本与嵌套 Mod 重复修复
 ### Bug Fixes
 - 修复服务器持久化游戏目录仍运行旧 SMAPI 的问题：镜像内置 SMAPI 升级到 4.5.2，启动时会重新安装内置 SMAPI，避免 `data/game` 残留旧版本导致新 Mod 无法加载。

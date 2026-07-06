@@ -14,6 +14,8 @@ namespace AutoHideHost
         public bool PauseWhenSingleFarmhandOpensMenu { get; set; } = true;
         public int SingleFarmhandMenuPauseTimeoutSeconds { get; set; } = 10;
         public bool InstantSleepWhenReady { get; set; } = true;
+        public bool AutoDismissNonProfessionLevelUpMenus { get; set; } = true;
+        public int LevelUpAutoDismissDelayTicks { get; set; } = 90;
         public string HideMethod { get; set; } = "warp";
         public string WarpLocation { get; set; } = "Desert";
         public int WarpX { get; set; } = 0;

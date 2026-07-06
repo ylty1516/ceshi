@@ -92,6 +92,9 @@ namespace AutoHideHost
         private string lastHostCommandMessage = "";
         private DateTime? lastHostCommandAt = null;
         private string hostCommandControlError = "";
+        private int pendingLevelUpDismissTicks = 0;
+        private int levelUpDismissAttempts = 0;
+        private const int MaxLevelUpDismissAttempts = 8;
 
         public override void Entry(IModHelper helper)
         {
@@ -193,7 +196,10 @@ namespace AutoHideHost
             }
 
             if (e.NewMenu == null)
+            {
+                ResetPendingLevelUpDismiss();
                 return;
+            }
 
             string menuType = e.NewMenu.GetType().Name;
             this.Monitor.Log($"菜单变化: {e.OldMenu?.GetType().Name ?? "null"} → {menuType}", LogLevel.Debug);
@@ -215,15 +221,26 @@ namespace AutoHideHost
                 return;
             }
 
-            // 2. LevelUpMenu（升级菜单）
-            // v1.2.2: CRITICAL - 完全不处理LevelUpMenu！
-            // 原因：任何自动点击都会触发技能升级选择，导致房主技能自动升到10级
-            // LevelUpMenu不会阻塞游戏流程，可以安全地让它保持显示
-            // 房主是隐藏的，玩家看不到这个菜单，游戏会正常继续
-            if (e.NewMenu is StardewValley.Menus.LevelUpMenu levelUpMenu)
+            // Plain level-up notices block overnight automation. Profession choices are left untouched.
+            if (e.NewMenu is StardewValley.Menus.LevelUpMenu autoLevelUpMenu)
             {
-                this.Monitor.Log("检测到LevelUpMenu，保持显示（不自动处理以避免技能自动升级）", LogLevel.Info);
-                return;  // 不做任何处理，让菜单自然存在
+                if (!Config.AutoDismissNonProfessionLevelUpMenus)
+                {
+                    this.Monitor.Log("LevelUpMenu detected; auto dismiss is disabled by config.", LogLevel.Info);
+                    return;
+                }
+
+                if (IsProfessionChoiceLevelUpMenu(autoLevelUpMenu))
+                {
+                    this.Monitor.Log("LevelUpMenu profession choice detected; leaving it open so no profession is chosen automatically.", LogLevel.Warn);
+                    ResetPendingLevelUpDismiss();
+                    return;
+                }
+
+                pendingLevelUpDismissTicks = Math.Max(1, Config.LevelUpAutoDismissDelayTicks);
+                levelUpDismissAttempts = 0;
+                this.Monitor.Log($"Plain LevelUpMenu detected; auto-clicking OK after {pendingLevelUpDismissTicks} ticks.", LogLevel.Info);
+                return;
             }
 
             // 3. DialogueBox（对话框）- 处理任务通知等阻塞性对话
@@ -357,6 +374,104 @@ namespace AutoHideHost
             return Game1.timeOfDay >= 2600;
         }
 
+        private void ResetPendingLevelUpDismiss()
+        {
+            pendingLevelUpDismissTicks = 0;
+            levelUpDismissAttempts = 0;
+        }
+
+        private bool IsProfessionChoiceLevelUpMenu(StardewValley.Menus.LevelUpMenu menu)
+        {
+            if (menu == null)
+                return false;
+
+            try
+            {
+                var chooserField = this.Helper.Reflection.GetField<bool>(menu, "isProfessionChooser", required: false);
+                if (chooserField != null && chooserField.GetValue())
+                    return true;
+
+                var professionsField = this.Helper.Reflection.GetField<List<int>>(menu, "professionsToChoose", required: false);
+                var professions = professionsField?.GetValue();
+                if (professions != null && professions.Count > 0)
+                    return true;
+
+                var currentLevelField = this.Helper.Reflection.GetField<int>(menu, "currentLevel", required: false);
+                int currentLevel = currentLevelField?.GetValue() ?? 0;
+                if (currentLevel == 5 || currentLevel == 10)
+                    return true;
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Could not inspect LevelUpMenu type safely: {ex.Message}", LogLevel.Warn);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ProcessPendingLevelUpDismiss()
+        {
+            if (pendingLevelUpDismissTicks <= 0)
+                return;
+
+            if (Game1.activeClickableMenu is not StardewValley.Menus.LevelUpMenu levelUpMenu)
+            {
+                ResetPendingLevelUpDismiss();
+                return;
+            }
+
+            if (IsProfessionChoiceLevelUpMenu(levelUpMenu))
+            {
+                this.Monitor.Log("LevelUpMenu changed into a profession choice; auto dismiss cancelled.", LogLevel.Warn);
+                ResetPendingLevelUpDismiss();
+                return;
+            }
+
+            pendingLevelUpDismissTicks--;
+            if (pendingLevelUpDismissTicks > 0)
+                return;
+
+            levelUpDismissAttempts++;
+            if (TryDismissPlainLevelUpMenu(levelUpMenu))
+            {
+                this.Monitor.Log("Plain LevelUpMenu auto-dismissed so the server can continue the night transition.", LogLevel.Info);
+                ResetPendingLevelUpDismiss();
+                return;
+            }
+
+            if (levelUpDismissAttempts >= MaxLevelUpDismissAttempts)
+            {
+                this.Monitor.Log("Plain LevelUpMenu auto-dismiss failed too many times; leaving it open for manual inspection.", LogLevel.Error);
+                ResetPendingLevelUpDismiss();
+                return;
+            }
+
+            pendingLevelUpDismissTicks = 30;
+        }
+
+        private bool TryDismissPlainLevelUpMenu(StardewValley.Menus.LevelUpMenu menu)
+        {
+            try
+            {
+                var okField = this.Helper.Reflection.GetField<StardewValley.Menus.ClickableTextureComponent>(menu, "okButton", required: false);
+                var okButton = okField?.GetValue();
+                if (okButton != null)
+                {
+                    menu.receiveLeftClick(okButton.bounds.Center.X, okButton.bounds.Center.Y, true);
+                    return true;
+                }
+
+                menu.receiveKeyPress(Microsoft.Xna.Framework.Input.Keys.Enter);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Could not auto-dismiss plain LevelUpMenu: {ex.Message}", LogLevel.Warn);
+                return false;
+            }
+        }
+
         private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
         {
             if (!Config.Enabled || !Context.IsMainPlayer)
@@ -376,6 +491,8 @@ namespace AutoHideHost
             {
                 WriteGameStateBridge();
             }
+
+            ProcessPendingLevelUpDismiss();
 
             if (e.Ticks % 15 == 0)
             {

@@ -109,6 +109,7 @@ generate_summary() {
     add_diagnostic_hit "DISK_SPACE" "No space left|ENOSPC|Disk write failure|insufficient disk"
     add_diagnostic_hit "PERMISSION_DENIED" "Permission denied|EACCES|EPERM|wrong-owner|chown"
     add_diagnostic_hit "SAVE_LOAD_FAILED" "Save directory not found|No valid Stardew Valley save|SaveGameInfo|SAVE_NAME.*not found"
+    add_diagnostic_hit "LEVEL_UP_MENU_BLOCKING_NIGHT" "LevelUpMenu|Skipping level up menu|level up menu"
     add_diagnostic_hit "MOD_EXCEPTION" "Mod crashed|failed loading mod|Harmony|Exception.*(mod|SMAPI|Harmony)"
     add_diagnostic_hit "GAME_CRASH" "Unhandled exception|Fatal error|Segmentation fault|core dumped|crash"
     add_diagnostic_hit "VNC_FAILED" "x11vnc|VNC_PASSWORD is empty|Port .*5900.*not listening"
