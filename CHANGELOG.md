@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-06 Auto Pause Sleep-State Fix and Live Time Monitor
+### New Features
+- The dashboard now shows a live in-game time card with date, pause/running state, SMAPI bridge refresh age, and current blockers such as saving, sleep transitions, events, or open menus.
+- Dashboard status polling now refreshes every 5 seconds so in-game time and pause-state changes are easier to verify without opening VNC.
+
+### Bug Fixes
+- Fixed stale sleep/day-transition flags in AutoHideHost so empty-server auto pause no longer stays blocked by `sleep_or_day_transition` after the next day starts.
+
 ## 2026-07-06 ServerAutoLoad v1 残留自动修复
 ### Bug Fixes
 - 修复服务器持久化 `data/game/Mods/ServerAutoLoad` 里残留旧版 `1.0.0` 时，游戏能进存档但不会进入多人 Host 模式的问题；启动同步内置 Mod 时会识别旧版/旧配置并替换为 v2 原生 `Co-op -> Host` 配置。
