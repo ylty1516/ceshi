@@ -148,10 +148,15 @@ namespace AutoHideHost
 
         private void OnDayStarted(object sender, DayStartedEventArgs e)
         {
-            if (!Context.IsMainPlayer || !Config.Enabled || !Config.AutoHideDaily)
+            if (!Context.IsMainPlayer || !Config.Enabled)
                 return;
-            HideHost();
+
+            if (Config.AutoHideDaily)
+                HideHost();
+
             hasTriggeredSleep = false;
+            needToSleep = false;
+            sleepDelayTicks = 0;
             isSleepInProgress = false;
             handledReadyCheck = false;  // v1.4.0: 重置ReadyCheck标志
             clientBackpackStates.Clear();
