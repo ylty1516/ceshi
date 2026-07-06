@@ -441,6 +441,67 @@ function formatGameDay(gameState) {
   return time ? `${label} ${time}`.trim() : label;
 }
 
+function formatGameDateLabel(gameState) {
+  if (!gameState || !gameState.worldReady) return '';
+  const season = gameState.season || '';
+  const day = gameState.day || 0;
+  const year = gameState.year || 0;
+  return [season, day ? `Day ${day}` : '', year ? `Y${year}` : ''].filter(Boolean).join(' ');
+}
+
+function formatGameTimeLabel(timeOfDay) {
+  if (!Number.isFinite(timeOfDay) || timeOfDay <= 0) return '';
+
+  const rawHour = Math.floor(timeOfDay / 100);
+  const minute = Math.max(0, Math.min(59, timeOfDay % 100));
+  const hour24 = rawHour >= 24 ? rawHour - 24 : rawHour;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
+}
+
+function buildGameClockStatus(status) {
+  const gameState = status.gameState || {};
+  const bridgeFresh = gameState.available === true && gameState.stale !== true;
+  const worldReady = bridgeFresh && gameState.worldReady === true;
+  const rawTime = Number.isFinite(gameState.timeOfDay) ? gameState.timeOfDay : 0;
+  const paused = status.timePause && status.timePause.paused === true;
+
+  let state = 'unknown';
+  if (!status.gameRunning) {
+    state = 'stopped';
+  } else if (!gameState.available) {
+    state = 'missing';
+  } else if (gameState.stale) {
+    state = 'stale';
+  } else if (!gameState.worldReady) {
+    state = 'not_ready';
+  } else if (paused) {
+    state = 'paused';
+  } else {
+    state = 'running';
+  }
+
+  return {
+    available: worldReady,
+    bridgeFresh,
+    state,
+    paused,
+    reason: status.timePause && status.timePause.reason ? status.timePause.reason : state,
+    source: status.timePause && status.timePause.source ? status.timePause.source : 'unknown',
+    rawTime,
+    timeLabel: worldReady ? formatGameTimeLabel(rawTime) : '',
+    dateLabel: worldReady ? formatGameDateLabel(gameState) : (status.day && status.day !== 'Unknown' ? status.day : ''),
+    updatedAt: gameState.updatedAt || status.timestamp,
+    ageSeconds: Number.isFinite(gameState.ageSeconds) ? gameState.ageSeconds : null,
+    saving: gameState.saving === true,
+    eventUp: gameState.eventUp === true,
+    activeMenu: typeof gameState.activeMenu === 'string' ? gameState.activeMenu : '',
+    saveOnNewDay: gameState.saveOnNewDay === true,
+    sleepInProgress: gameState.sleepInProgress === true,
+  };
+}
+
 function describeJoinable(gameState, gameRunning) {
   if (!gameRunning) {
     return {
@@ -659,6 +720,24 @@ function collectStatus(req = null) {
       autoApplied: false,
       singleMenuApplied: false,
       updatedAt: null,
+    },
+    gameClock: {
+      available: false,
+      bridgeFresh: false,
+      state: 'unknown',
+      paused: false,
+      reason: '',
+      source: 'unknown',
+      rawTime: 0,
+      timeLabel: '',
+      dateLabel: '',
+      updatedAt: null,
+      ageSeconds: null,
+      saving: false,
+      eventUp: false,
+      activeMenu: '',
+      saveOnNewDay: false,
+      sleepInProgress: false,
     },
     gameState: readGameStateBridge(),
     worldState: {
@@ -963,6 +1042,7 @@ function collectStatus(req = null) {
     status.paused = true;
   }
   status.timePause = buildTimePauseStatus(status);
+  status.gameClock = buildGameClockStatus(status);
 
   try {
     const worldState = buildWorldState();

@@ -313,10 +313,21 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.stat-value.ok { color: var(--accent); }
+.stat-value.warn { color: var(--accent-warn); }
+.stat-value.error { color: var(--accent-error); }
+
 .stat-label {
   font-size: 12px;
   color: var(--text-secondary);
   margin-top: 2px;
+  line-height: 1.25;
+}
+
+.stat-subvalue {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
   line-height: 1.25;
 }
 
