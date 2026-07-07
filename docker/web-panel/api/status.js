@@ -140,23 +140,46 @@ function extractLogHints(lines = readRecentLogLines(500)) {
   return { day, players: connectedPlayers.size, paused };
 }
 
-function getClientModJoinHint() {
+function getClientModJoinHint(clientPack = null) {
   try {
-    const clientPack = modsAPI.getClientPackStatus();
-    if (!clientPack || !clientPack.modCount) {
+    const pack = clientPack || modsAPI.getClientPackStatus();
+    if (!pack || !pack.modCount) {
       return '';
     }
 
-    const fingerprint = clientPack.fingerprint
-      ? ` Pack fingerprint: ${clientPack.fingerprint.slice(0, 12)}.`
+    const fingerprint = pack.fingerprint
+      ? ` Pack fingerprint: ${pack.fingerprint.slice(0, 12)}.`
       : '';
-    const availability = clientPack.available
+    const availability = pack.available
       ? 'Ask the player to install /player-mods -> stardew-client-mods.zip before joining.'
       : 'Rebuild/download the player mod pack from the Mods page, then ask the player to install it before joining.';
 
-    return ` This server has ${clientPack.modCount} client-required mod(s). ${availability}${fingerprint}`;
+    return ` This server has ${pack.modCount} client-required mod(s). ${availability}${fingerprint}`;
   } catch (error) {
     return '';
+  }
+}
+
+function getClientModJoinInfo() {
+  try {
+    const clientPack = modsAPI.getClientPackStatus();
+    const expectedModCount = Number.isFinite(clientPack?.modCount) ? clientPack.modCount : 0;
+    const fingerprint = clientPack?.fingerprint ? String(clientPack.fingerprint).slice(0, 12) : '';
+    return {
+      expectedModCount,
+      fingerprint,
+      available: clientPack?.available === true,
+      stale: clientPack?.stale === true,
+      hint: getClientModJoinHint(clientPack),
+    };
+  } catch (error) {
+    return {
+      expectedModCount: 0,
+      fingerprint: '',
+      available: false,
+      stale: false,
+      hint: '',
+    };
   }
 }
 
@@ -181,8 +204,89 @@ function getSaveSlotJoinHint() {
   }
 }
 
+function parseClientModContext(line) {
+  const smapiMatch = line.match(/Received context for farmhand\s+([A-Za-z0-9_.:+-]+)\s+running SMAPI\s+([0-9][^\s]*)\s+with\s+(\d+)\s+mods?/i);
+  if (smapiMatch) {
+    return {
+      type: 'smapi',
+      farmhandId: smapiMatch[1],
+      smapiVersion: smapiMatch[2],
+      modCount: parseInt(smapiMatch[3], 10),
+    };
+  }
+
+  const vanillaMatch = line.match(/Received connection for vanilla player\s+([A-Za-z0-9_.:+-]+)/i);
+  if (vanillaMatch) {
+    return {
+      type: 'vanilla',
+      farmhandId: vanillaMatch[1],
+      smapiVersion: '',
+      modCount: 0,
+    };
+  }
+
+  return null;
+}
+
+function applyClientModContext(state, context, clientModInfo) {
+  const expected = clientModInfo.expectedModCount || 0;
+  const actual = Number.isFinite(context.modCount) ? context.modCount : null;
+  const fingerprint = clientModInfo.fingerprint
+    ? ` Pack fingerprint: ${clientModInfo.fingerprint}.`
+    : '';
+
+  state.clientSmapiVersion = context.smapiVersion || '';
+  state.clientModCount = actual;
+  state.expectedClientModCount = expected;
+  state.clientModContext = context.type;
+
+  if (expected <= 0 || actual === null) {
+    state.stage = 'farmhand_requested';
+    state.label = 'Client selected or requested a farmhand';
+    state.action = 'Wait for approval or check the next SMAPI line if the join still fails.';
+    return;
+  }
+
+  if (context.type === 'vanilla') {
+    state.stage = 'client_smapi_missing';
+    state.label = 'Client joined as vanilla Stardew';
+    state.action = `The player reached the farmhand handshake without SMAPI, but this server requires ${expected} client mod(s). Ask the player to launch Stardew Valley through SMAPI and install /player-mods -> stardew-client-mods.zip.${fingerprint}`;
+    state.clientModIssue = 'missing_smapi';
+    return;
+  }
+
+  if (actual === 0) {
+    state.stage = 'client_mods_missing';
+    state.label = 'Client reported zero loaded mods';
+    state.action = `The player is running SMAPI ${context.smapiVersion}, but reported 0 loaded mod(s) while this server requires ${expected}. This usually means the pack was installed into the wrong Mods folder, extracted as nested Mods/Mods, or the player launched a different Stardew install. Reinstall /player-mods -> stardew-client-mods.zip into the local Stardew Valley/Mods folder and relaunch through SMAPI.${fingerprint}`;
+    state.clientModIssue = 'missing_mods';
+    return;
+  }
+
+  if (actual < expected) {
+    state.stage = 'client_mods_incomplete';
+    state.label = 'Client mod set is incomplete';
+    state.action = `The player reported ${actual} loaded mod(s), but this server currently requires ${expected} client mod(s). Reinstall the full player mod pack from /player-mods and check duplicate/nested Mods folders.${fingerprint}`;
+    state.clientModIssue = 'incomplete_mods';
+    return;
+  }
+
+  if (actual > expected + 8) {
+    state.stage = 'client_extra_mods';
+    state.label = 'Client has many extra mods';
+    state.action = `The player reported ${actual} loaded mod(s), while the server player pack requires ${expected}. Extra cosmetic/client-only mods may be fine, but extra content/framework mods can still desync large mod events. Compare the player's Mods folder against /player-mods if joining fails.${fingerprint}`;
+    state.clientModIssue = 'extra_mods';
+    return;
+  }
+
+  state.stage = 'farmhand_requested';
+  state.label = `Client requested a farmhand with SMAPI ${context.smapiVersion} and ${actual} mod(s)`;
+  state.action = 'The client mod count is at least as high as the server-required player pack. If joining still fails, inspect the next approval/disconnect line and the save slot audit.';
+}
+
 function describeJoinHandshake(lines = readRecentLogLines(500)) {
-  const clientModHint = getClientModJoinHint();
+  const clientModInfo = getClientModJoinInfo();
+  const clientModHint = clientModInfo.hint;
   const saveSlotHint = getSaveSlotJoinHint();
   const state = {
     stage: 'none',
@@ -203,6 +307,13 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
       continue;
     }
 
+    const clientModContext = parseClientModContext(line);
+    if (clientModContext) {
+      state.line = line;
+      applyClientModContext(state, clientModContext, clientModInfo);
+      continue;
+    }
+
     if (/Received context for farmhand|received farmhand request|Server received farmhand request/i.test(line)) {
       state.stage = 'farmhand_requested';
       state.line = line;
@@ -212,10 +323,15 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
     }
 
     if (/Approved request for farmhand|farmhand .* connected|joined the game|player .* connected/i.test(line)) {
-      state.stage = 'approved';
       state.line = line;
-      state.label = 'Join request approved';
-      state.action = '';
+      state.approved = true;
+      if (state.clientModIssue && state.clientModIssue !== 'extra_mods') {
+        state.label = `${state.label}; join request was approved afterward`;
+      } else {
+        state.stage = 'approved';
+        state.label = 'Join request approved';
+        state.action = '';
+      }
       continue;
     }
 

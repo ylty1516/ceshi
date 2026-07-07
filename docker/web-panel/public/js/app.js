@@ -96,6 +96,10 @@ const translations = {
     'joinHandshake.approved': '加入已批准',
     'joinHandshake.rejected_no_slots': '无可用席位',
     'joinHandshake.disconnected_after_farmhand_list': '席位列表后断开',
+    'joinHandshake.client_smapi_missing': '客户端未用 SMAPI',
+    'joinHandshake.client_mods_missing': '客户端未加载 Mod',
+    'joinHandshake.client_mods_incomplete': '客户端 Mod 不完整',
+    'joinHandshake.client_extra_mods': '客户端 Mod 偏多',
     'join.reason.ready': '联机层已初始化，玩家现在应该可以加入。',
     'join.reason.game_process_stopped': '游戏进程未运行，请启动或重启容器。',
     'join.reason.state_bridge_missing': '正在等待 SMAPI 状态桥写入状态。',
@@ -466,6 +470,10 @@ const translations = {
     'joinHandshake.approved': 'Join approved',
     'joinHandshake.rejected_no_slots': 'No free slot',
     'joinHandshake.disconnected_after_farmhand_list': 'Disconnected after list',
+    'joinHandshake.client_smapi_missing': 'Client is vanilla',
+    'joinHandshake.client_mods_missing': 'Client loaded no mods',
+    'joinHandshake.client_mods_incomplete': 'Client mods incomplete',
+    'joinHandshake.client_extra_mods': 'Client has extra mods',
     'join.reason.ready': 'The multiplayer layer is initialized. Players should be able to join now.',
     'join.reason.game_process_stopped': 'The game process is not running. Start or restart the container.',
     'join.reason.state_bridge_missing': 'Waiting for the SMAPI state bridge to write game state.',
@@ -1266,9 +1274,16 @@ function updateJoinHandshakeUI(handshake) {
 
   if (value) {
     value.textContent = label;
+    const errorStages = new Set([
+      'rejected_no_slots',
+      'disconnected_after_farmhand_list',
+      'client_smapi_missing',
+      'client_mods_missing',
+      'client_mods_incomplete',
+    ]);
     const tone = stage === 'approved'
       ? 'ok'
-      : (stage === 'rejected_no_slots' || stage === 'disconnected_after_farmhand_list' ? 'error' : 'warn');
+      : (errorStages.has(stage) ? 'error' : 'warn');
     setTone(value, stage === 'none' ? '' : tone);
   }
 

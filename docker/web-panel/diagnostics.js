@@ -85,6 +85,15 @@ const RULES = [
     pattern: /LevelUpMenu|Skipping level up menu|level up menu/i,
   },
   {
+    code: 'CLIENT_JOINED_WITHOUT_MODS',
+    severity: 'warn',
+    category: 'multiplayer',
+    title: 'A player joined without the required SMAPI mod context',
+    cause: 'The client reached the farmhand handshake as vanilla Stardew or reported zero loaded mods. On a modded server this can appear as no free slot, a red client-side receiveAvailableFarmhands error, or an immediate disconnect.',
+    action: 'Ask the player to install /player-mods -> stardew-client-mods.zip into the real local Stardew Valley/Mods folder, remove nested Mods/Mods copies, and launch the game through SMAPI.',
+    pattern: /Received connection for vanilla player|Received context for farmhand .* running SMAPI .* with 0 mods/i,
+  },
+  {
     code: 'MOD_EXCEPTION',
     severity: 'error',
     category: 'mod',

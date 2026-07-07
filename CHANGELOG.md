@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-07 大型 Mod 联机握手诊断增强
+### Improvements
+- 加入握手诊断现在会解析服务器日志中的客户端 SMAPI/Mod 上下文，例如 `Received connection for vanilla player`、`Received context for farmhand ... running SMAPI ... with 0 mods`。
+- 当服务器当前存在玩家必须安装的 Mod，而客户端以原版进入、SMAPI 报告 0 个 Mod，或客户端 Mod 数量明显少于服务器玩家包时，仪表盘和诊断页会直接显示“客户端未用 SMAPI / 客户端未加载 Mod / 客户端 Mod 不完整”，不再只显示笼统的“无空位”或“席位列表后断开”。
+- 日志诊断新增 `CLIENT_JOINED_WITHOUT_MODS`，用于把大型 Mod 联机时常见的 `receiveAvailableFarmhands` 红字、伪装成无空位的断开和客户端未加载 Mod 关联起来。
+
 ## 2026-07-06 夜间升级菜单阻塞修复
 ### Bug Fixes
 - 修复隐藏房主睡觉后遇到普通 `LevelUpMenu` 升级提示时，服务器无人点击确认导致日夜结算卡住、面板显示状态桥过期/游戏时间不推进的问题。

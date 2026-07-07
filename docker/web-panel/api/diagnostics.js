@@ -469,9 +469,21 @@ function buildHealth(req = null) {
 
   const joinHandshake = status.joinHandshake || {};
   const handshakeStage = joinHandshake.stage || 'none';
+  const handshakeErrorStages = new Set([
+    'rejected_no_slots',
+    'disconnected_after_farmhand_list',
+    'client_smapi_missing',
+    'client_mods_missing',
+    'client_mods_incomplete',
+  ]);
+  const handshakeWarnStages = new Set([
+    'client_extra_mods',
+    'farmhand_requested',
+    'sent_farmhand_list',
+  ]);
   const handshakeStatus = handshakeStage === 'approved' || handshakeStage === 'none'
     ? 'ok'
-    : (handshakeStage === 'rejected_no_slots' || handshakeStage === 'disconnected_after_farmhand_list' ? 'error' : 'warn');
+    : (handshakeErrorStages.has(handshakeStage) ? 'error' : (handshakeWarnStages.has(handshakeStage) ? 'warn' : 'warn'));
   checks.push({
     id: 'join_handshake',
     label: 'Player join handshake',
