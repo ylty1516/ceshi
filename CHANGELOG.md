@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-09 大型 Mod “有小屋无空位”根因修复
+### Bug Fixes
+- 修复配置推荐在安装大型内容 Mod 时把 `MAX_PLAYERS` 压到 2/3 的问题；过低的人数上限会让农场上明明有空闲小屋，客户端却提示“服务器没有空闲位置”。
+- AutoHideHost 源码 v1.4.2（需用本机星露谷/SMAPI 重新编译 `docker/mods/AutoHideHost/AutoHideHost.dll` 后才会生效）：存档加载后强制保持 `enableServer` / `ipConnectionsEnabled` / `enableFarmhandCreation`，并写入运行时小屋/空闲 farmhand 席位审计到 `game-state.json`；房主本地菜单打开时不再把 `joinable` 误判为不可加入。
+- ServerAutoLoad 源码 v2.0.1（同样需要重新编译 DLL）：世界加载完成后校验 `Game1.IsServer` 与 `Game1.server`，避免“进了存档但不是真正 Host 联机层”导致空闲席位列表为空。
+### Improvements
+- 诊断页在 `game-state.json` 提供 `farmhandSlots` 时新增 `Runtime farmhand / cabin slots`，可对比存档审计和运行时空闲席位。
+- 加入握手在“服务端已发送席位列表 / 无空位 / 列表后断开”时，若运行时仍有空闲小屋，会明确指向客户端 Mod/SMAPI 不一致。
+### Immediate (no mod rebuild required)
+- 面板推荐配置、加入握手文案、诊断页逻辑和 `MAX_PLAYERS` 推荐值已立即生效，可直接更新 Web 面板容器验证。
+
 ## 2026-07-07 大型 Mod 联机握手诊断增强
 ### Improvements
 - 加入握手诊断现在会解析服务器日志中的客户端 SMAPI/Mod 上下文，例如 `Received connection for vanilla player`、`Received context for farmhand ... running SMAPI ... with 0 mods`。

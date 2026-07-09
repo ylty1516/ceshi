@@ -511,6 +511,29 @@ function buildHealth(req = null) {
     action: slotAudit.action || '',
   });
 
+  const liveSlots = status.gameState && status.gameState.farmhandSlots && typeof status.gameState.farmhandSlots === 'object'
+    ? status.gameState.farmhandSlots
+    : null;
+  if (liveSlots && liveSlots.available) {
+    const liveIssue = liveSlots.issueCode ? `; issue: ${liveSlots.issueCode}` : '';
+    const liveStatus = liveSlots.issueCode === 'no_free_farmhand_slots'
+      || liveSlots.issueCode === 'not_main_server'
+      || liveSlots.issueCode === 'multiplayer_not_initialized'
+      || liveSlots.issueCode === 'no_cabins'
+      ? 'error'
+      : (liveSlots.issueCode ? 'warn' : 'ok');
+    checks.push({
+      id: 'runtime_farmhand_slots',
+      label: 'Runtime farmhand / cabin slots',
+      status: liveStatus,
+      detail: `free=${liveSlots.estimatedFreeSlots ?? '--'}; cabins=${liveSlots.cabinCount ?? '--'}; empty=${liveSlots.emptyCabinCount ?? '--'}; offline=${liveSlots.offlineFarmhandCount ?? '--'}; online=${liveSlots.onlineFarmhandCount ?? '--'}; playerLimit=${liveSlots.playerLimit ?? '--'}; farmhandCreation=${liveSlots.enableFarmhandCreation === true}${liveIssue}.`,
+      action: liveSlots.issueMessage
+        || (Number.isFinite(liveSlots.estimatedFreeSlots) && liveSlots.estimatedFreeSlots > 0
+          ? 'Runtime free slots exist. If clients still see "no free slots", install /player-mods -> stardew-client-mods.zip on every client and relaunch through SMAPI.'
+          : 'Raise MAX_PLAYERS, build empty cabins, or free offline farmhand records; then restart once.'),
+    });
+  }
+
   const orchestration = status.orchestration || {};
   const orchestrationBlockers = Array.isArray(orchestration.blockers) ? orchestration.blockers : [];
   checks.push({

@@ -40,7 +40,23 @@ namespace ServerAutoLoad
             if (Context.IsWorldReady)
             {
                 finished = true;
-                WriteState("world_ready", true, $"Loaded {Game1.player?.farmName.Value ?? "save"} through Co-op host flow.");
+                string hostStatus = DescribeHostReadiness();
+                bool hostOk = Game1.IsServer && Game1.server != null;
+                WriteState(
+                    hostOk ? "world_ready" : "world_ready_not_server",
+                    hostOk,
+                    $"Loaded {Game1.player?.farmName.Value ?? "save"} through Co-op host flow. {hostStatus}");
+                if (!hostOk)
+                {
+                    Monitor.Log(
+                        "Save loaded but multiplayer host/server is not ready. Clients may see no free farmhand slots. " +
+                        "Confirm native Co-op Host activation completed and Always On Server enabled.",
+                        LogLevel.Error);
+                }
+                else
+                {
+                    Monitor.Log($"Save loaded with multiplayer host ready. {hostStatus}", LogLevel.Info);
+                }
                 return;
             }
 
@@ -391,6 +407,31 @@ namespace ServerAutoLoad
                 return "null";
 
             return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        }
+
+        private string DescribeHostReadiness()
+        {
+            try
+            {
+                bool isServer = Game1.IsServer;
+                bool serverReady = isServer && Game1.server != null;
+                bool multiplayer = Game1.IsMultiplayer;
+                int online = 0;
+                try
+                {
+                    online = Game1.getOnlineFarmers()?.Count() ?? 0;
+                }
+                catch
+                {
+                    online = 0;
+                }
+
+                return $"IsServer={isServer}, IsMultiplayer={multiplayer}, Game1.server={(serverReady ? "ready" : "null")}, onlineFarmers={online}.";
+            }
+            catch (Exception ex)
+            {
+                return $"Host readiness check failed: {ex.Message}";
+            }
         }
     }
 }

@@ -183,7 +183,7 @@ function getClientModJoinInfo() {
   }
 }
 
-function getSaveSlotJoinHint() {
+function getSaveSlotJoinHint(gameState = null) {
   try {
     const audit = saveAudit.buildSaveSlotAudit();
     if (!audit) {
@@ -198,7 +198,15 @@ function getSaveSlotJoinHint() {
       ? ` Estimated free farmhand slots: ${slot.estimatedFreeFarmhandSlots}.`
       : '';
     const action = audit.action ? ` ${audit.action}` : '';
-    return ` Save slot audit: ${audit.status}.${selected}${estimate}${action}`;
+
+    const live = gameState && gameState.farmhandSlots && typeof gameState.farmhandSlots === 'object'
+      ? gameState.farmhandSlots
+      : null;
+    const liveHint = live && live.available
+      ? ` Runtime free slots: ${live.estimatedFreeSlots ?? '--'} (cabins=${live.cabinCount ?? '--'}, empty=${live.emptyCabinCount ?? '--'}, offline=${live.offlineFarmhandCount ?? '--'}, online=${live.onlineFarmhandCount ?? '--'}, playerLimit=${live.playerLimit ?? '--'}${live.issueCode ? `, issue=${live.issueCode}` : ''}).`
+      : '';
+
+    return ` Save slot audit: ${audit.status}.${selected}${estimate}${liveHint}${action}`;
   } catch (error) {
     return '';
   }
@@ -284,10 +292,18 @@ function applyClientModContext(state, context, clientModInfo) {
   state.action = 'The client mod count is at least as high as the server-required player pack. If joining still fails, inspect the next approval/disconnect line and the save slot audit.';
 }
 
-function describeJoinHandshake(lines = readRecentLogLines(500)) {
+function describeJoinHandshake(lines = readRecentLogLines(500), gameState = null) {
   const clientModInfo = getClientModJoinInfo();
   const clientModHint = clientModInfo.hint;
-  const saveSlotHint = getSaveSlotJoinHint();
+  const saveSlotHint = getSaveSlotJoinHint(gameState);
+  const liveSlots = gameState && gameState.farmhandSlots && typeof gameState.farmhandSlots === 'object'
+    ? gameState.farmhandSlots
+    : null;
+  const liveFree = Number.isFinite(liveSlots?.estimatedFreeSlots) ? liveSlots.estimatedFreeSlots : null;
+  const liveHasCabins = Number.isFinite(liveSlots?.cabinCount) ? liveSlots.cabinCount > 0 : false;
+  const falseNoSlotHint = (liveFree !== null && liveFree > 0) || (liveHasCabins && clientModInfo.expectedModCount > 0)
+    ? ' Server-side free cabins/slots appear available, so a client-side Mod/SMAPI mismatch is the most likely cause of a fake "no free slots" message.'
+    : '';
   const state = {
     stage: 'none',
     connectionId: '',
@@ -303,7 +319,7 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
       state.connectionId = match[1];
       state.line = line;
       state.label = 'Server sent the farmhand list';
-      state.action = `If the player still sees no free slot, check whether the client requested a farmhand after receiving the list.${saveSlotHint}${clientModHint}`;
+      state.action = `If the player still sees no free slot, check whether the client requested a farmhand after receiving the list.${falseNoSlotHint}${saveSlotHint}${clientModHint}`;
       continue;
     }
 
@@ -339,7 +355,7 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
       state.stage = 'rejected_no_slots';
       state.line = line;
       state.label = 'Server reported no free farmhand slot';
-      state.action = `Check playerLimit, enableFarmhandCreation, cabins, selected save, and whether the loaded save was opened through a true co-op host flow.${saveSlotHint} If those are correct, the next most likely cause is a client/server mod-set mismatch.${clientModHint}`;
+      state.action = `Check playerLimit, enableFarmhandCreation, cabins, selected save, and whether the loaded save was opened through a true co-op host flow.${falseNoSlotHint}${saveSlotHint} If those are correct, the next most likely cause is a client/server mod-set mismatch.${clientModHint}`;
       continue;
     }
 
@@ -347,7 +363,7 @@ function describeJoinHandshake(lines = readRecentLogLines(500)) {
       state.stage = 'disconnected_after_farmhand_list';
       state.line = line;
       state.label = 'Player disconnected after the farmhand list was sent';
-      state.action = `This usually means the client could not choose a farmhand or rejected the slot list. Compare the client mod set and run the save slot audit.${saveSlotHint}${clientModHint}`;
+      state.action = `This usually means the client could not choose a farmhand or rejected the slot list.${falseNoSlotHint} Compare the client mod set and run the save slot audit.${saveSlotHint}${clientModHint}`;
     }
   }
 
@@ -730,12 +746,13 @@ function describeJoinable(gameState, gameRunning) {
   const reason = gameState.joinableReason || (gameState.joinable ? 'ready' : 'unknown');
   const messages = {
     ready: ['Ready to join', 'Players should be able to join now.'],
+    ready_with_host_menu: ['Ready to join (host menu open)', 'Host has a local menu open; this usually does not block farmhand joins. If clients still fail, check client mods and the join handshake.'],
     world_not_ready: ['Save is not loaded', 'Wait for ServerAutoLoad or load the save through VNC.'],
     not_main_server: ['Host is not the main server', 'Reload through Co-op so the host opens the multiplayer session.'],
     multiplayer_not_initialized: ['Multiplayer layer is not initialized', 'Use VNC to reload the save through Co-op, then retry.'],
     saving: ['Game is saving', 'Wait for saving to finish before joining or backing up.'],
     blocking_event: ['Blocked by an event', 'Advance or skip the host event if players cannot move.'],
-    menu_open: ['Host menu is open', 'Automation may close it; use VNC if it stays open.'],
+    menu_open: ['Host menu is open', 'Host menus alone rarely block joins; check join handshake and client mod parity if players still cannot enter.'],
     unknown: ['Not joinable yet', 'Check SMAPI logs and host state.'],
   };
   const [label, action] = messages[reason] || messages.unknown;
@@ -1087,7 +1104,7 @@ function collectStatus(req = null) {
 
   const recentLogLines = readRecentLogLines(500);
   const hints = extractLogHints(recentLogLines);
-  status.joinHandshake = describeJoinHandshake(recentLogLines);
+  status.joinHandshake = describeJoinHandshake(recentLogLines, status.gameState);
   if ((status.day === 'Unknown' || !status.day) && hints.day) {
     status.day = hints.day;
   }

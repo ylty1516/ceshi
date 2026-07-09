@@ -70,6 +70,47 @@ Check the Web panel diagnostics. The report now includes `server-autoload-state.
 - 服务端是否已把 farmhand 席位列表发给客户端
 - 客户端是否已选择 farmhand，并被服务端批准
 
+### Large Content Mods + Lowered MAX_PLAYERS
+### 大型内容 Mod + 被压低的 MAX_PLAYERS
+
+**Issue / 问题:**
+
+After enabling large content mods (SVE, Ridgeside, East Scarp, etc.), clients may see "no free slots on the server" even though empty cabins are visible on the farm.
+
+开启大型内容 Mod（SVE、里村、East Scarp 等）后，客户端可能提示“服务器没有空闲位置”，但农场上仍能看到空闲农夫小屋。
+
+**Why This Happens / 原因:**
+
+1. **Client mod mismatch (most common with large mods):** the host has content mods, the client does not (or has a different pack). The server can still send a farmhand list, but the client fails around `receiveAvailableFarmhands` and shows a misleading no-slot message.
+2. **MAX_PLAYERS too low:** older panel recommendations lowered `MAX_PLAYERS` to 2–3 under large-mod pressure. Empty cabins beyond that limit cannot be joined.
+3. **Host not truly in Co-op Host mode:** if the save was not loaded through native `Co-op -> Host`, multiplayer farmhand slots may stay empty even though cabin buildings exist.
+
+1. **客户端 Mod 不一致（大型 Mod 最常见）：** 服务端有内容 Mod，客户端没有或版本不同。服务端仍可能发出 farmhand 列表，但客户端在 `receiveAvailableFarmhands` 附近失败，并误报无空位。
+2. **MAX_PLAYERS 过低：** 旧版配置推荐在大型 Mod 压力下会把 `MAX_PLAYERS` 降到 2–3。超过人数上限的空闲小屋无法加入。
+3. **未真正走 Co-op Host：** 若存档不是通过原生 `Co-op -> Host` 载入，多人 farmhand 席位可能为空，但小屋建筑仍然存在。
+
+**What changed / 改动:**
+
+- Config recommendations no longer crush `MAX_PLAYERS` for large mods.
+- AutoHideHost reports runtime free farmhand/cabin slots in `game-state.json`.
+- Join handshake diagnostics explicitly call out fake no-slot cases when runtime free cabins exist.
+
+- 配置推荐不再因大型 Mod 把 `MAX_PLAYERS` 压到不可用。
+- AutoHideHost 会把运行时空闲 farmhand/小屋席位写入 `game-state.json`。
+- 加入握手诊断在运行时仍有空闲小屋时，会明确提示这是假性“无空位”。
+
+**Required check / 必查:**
+
+1. Panel **Configuration** → `MAX_PLAYERS=8` (or at least host+cabins).
+2. Panel **Diagnostics** → `Save slot and cabin audit` and `Runtime farmhand / cabin slots`.
+3. Panel **Mods** → every player installs `/player-mods` → `stardew-client-mods.zip` and launches with SMAPI.
+4. Dashboard **Join handshake** after one failed join attempt.
+
+1. 面板 **配置** → `MAX_PLAYERS=8`（至少 host+小屋数）。
+2. 面板 **诊断** → `Save slot and cabin audit` 与 `Runtime farmhand / cabin slots`。
+3. 面板 **模组** → 每个玩家安装 `/player-mods` → `stardew-client-mods.zip` 并用 SMAPI 启动。
+4. 失败一次加入后看仪表盘 **加入握手**。
+
 ### Client Mod Mismatch Can Look Like "No Free Slot"
 ### 客户端 Mod 不一致可能伪装成“没有空闲位置”
 

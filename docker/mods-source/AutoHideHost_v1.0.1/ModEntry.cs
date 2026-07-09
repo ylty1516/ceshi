@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.Buildings;
 using StardewValley.Locations;
 
 namespace AutoHideHost
@@ -140,6 +142,8 @@ namespace AutoHideHost
             singleFarmhandMenuPausePlayerName = "";
             singleFarmhandMenuPauseMenuType = "";
             ResetEventProxyRuntime("save_loaded");
+            EnsureMultiplayerJoinOptions("save_loaded");
+            LogFarmhandSlotAudit("save_loaded");
             this.Monitor.Log("存档已加载，3秒后检查 Always On Server 状态", LogLevel.Info);
 
             if (Config.AutoHideOnLoad)
@@ -1317,6 +1321,416 @@ namespace AutoHideHost
             return value ? "true" : "false";
         }
 
+        /// <summary>
+        /// Heal host multiplayer options that, when left false after large-mod loads,
+        /// make clients see "no free slots" even when empty cabins exist on the farm.
+        /// </summary>
+        private void EnsureMultiplayerJoinOptions(string reason)
+        {
+            try
+            {
+                if (!Context.IsWorldReady || !Context.IsMainPlayer || Game1.options == null)
+                    return;
+
+                var changed = new List<string>();
+
+                if (!Game1.options.enableServer)
+                {
+                    Game1.options.enableServer = true;
+                    changed.Add("enableServer=true");
+                }
+
+                if (!Game1.options.ipConnectionsEnabled)
+                {
+                    Game1.options.ipConnectionsEnabled = true;
+                    changed.Add("ipConnectionsEnabled=true");
+                }
+
+                if (!Game1.options.enableFarmhandCreation)
+                {
+                    Game1.options.enableFarmhandCreation = true;
+                    changed.Add("enableFarmhandCreation=true");
+                }
+
+                // Keep in-game player limit aligned with the panel MAX_PLAYERS default when possible.
+                int desiredLimit = ReadDesiredPlayerLimit();
+                int currentLimit = TryGetMultiplayerLimit();
+                if (desiredLimit >= 2 && desiredLimit <= 8 && currentLimit != desiredLimit)
+                {
+                    if (TrySetMultiplayerLimit(desiredLimit))
+                        changed.Add($"multiplayerLimit={desiredLimit}");
+                }
+
+                if (changed.Count > 0)
+                {
+                    this.Monitor.Log(
+                        $"[FarmhandSlots] Healed multiplayer join options after {reason}: {string.Join(", ", changed)}",
+                        LogLevel.Info);
+                }
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"[FarmhandSlots] EnsureMultiplayerJoinOptions failed: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private int ReadDesiredPlayerLimit()
+        {
+            try
+            {
+                string env = Environment.GetEnvironmentVariable("MAX_PLAYERS");
+                if (int.TryParse(env, out int fromEnv) && fromEnv >= 1 && fromEnv <= 8)
+                    return fromEnv;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            int current = TryGetMultiplayerLimit();
+            if (current >= 1 && current <= 8)
+                return current;
+
+            return 8;
+        }
+
+        private static int TryGetMultiplayerLimit()
+        {
+            try
+            {
+                FieldInfo field = typeof(Game1).GetField("multiplayerLimit", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (field != null && field.FieldType == typeof(int))
+                    return (int)field.GetValue(null);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                PropertyInfo prop = typeof(Game1).GetProperty("multiplayerLimit", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (prop != null && prop.PropertyType == typeof(int))
+                    return (int)prop.GetValue(null);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return 0;
+        }
+
+        private static bool TrySetMultiplayerLimit(int limit)
+        {
+            try
+            {
+                FieldInfo field = typeof(Game1).GetField("multiplayerLimit", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (field != null && field.FieldType == typeof(int) && !field.IsInitOnly)
+                {
+                    field.SetValue(null, limit);
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                PropertyInfo prop = typeof(Game1).GetProperty("multiplayerLimit", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (prop != null && prop.CanWrite && prop.PropertyType == typeof(int))
+                {
+                    prop.SetValue(null, limit);
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return false;
+        }
+
+        private void LogFarmhandSlotAudit(string reason)
+        {
+            try
+            {
+                FarmhandSlotAudit audit = BuildFarmhandSlotAudit();
+                this.Monitor.Log(
+                    $"[FarmhandSlots] {reason}: cabins={audit.CabinCount}, emptyCabins={audit.EmptyCabinCount}, " +
+                    $"offlineFarmhands={audit.OfflineFarmhandCount}, onlineFarmhands={audit.OnlineFarmhandCount}, " +
+                    $"freeSlots={audit.EstimatedFreeSlots}, playerLimit={audit.PlayerLimit}, " +
+                    $"farmhandCreation={audit.EnableFarmhandCreation}, isServer={audit.IsServer}, " +
+                    $"serverReady={audit.ServerReady}, issue={audit.IssueCode || "none"}",
+                    audit.IssueCode != null ? LogLevel.Warn : LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"[FarmhandSlots] audit failed: {ex.Message}", LogLevel.Trace);
+            }
+        }
+
+        private string BuildFarmhandSlotAuditJson()
+        {
+            try
+            {
+                if (!Context.IsWorldReady)
+                {
+                    return "{" +
+                        "\"available\":false," +
+                        "\"cabinCount\":0," +
+                        "\"emptyCabinCount\":0," +
+                        "\"offlineFarmhandCount\":0," +
+                        "\"onlineFarmhandCount\":0," +
+                        "\"estimatedFreeSlots\":0," +
+                        "\"playerLimit\":0," +
+                        "\"enableFarmhandCreation\":false," +
+                        "\"isServer\":false," +
+                        "\"serverReady\":false," +
+                        "\"issueCode\":\"world_not_ready\"," +
+                        "\"issueMessage\":\"World is not ready yet.\"" +
+                        "}";
+                }
+
+                FarmhandSlotAudit audit = BuildFarmhandSlotAudit();
+                return "{" +
+                    $"\"available\":true," +
+                    $"\"cabinCount\":{audit.CabinCount}," +
+                    $"\"emptyCabinCount\":{audit.EmptyCabinCount}," +
+                    $"\"offlineFarmhandCount\":{audit.OfflineFarmhandCount}," +
+                    $"\"onlineFarmhandCount\":{audit.OnlineFarmhandCount}," +
+                    $"\"estimatedFreeSlots\":{audit.EstimatedFreeSlots}," +
+                    $"\"playerLimit\":{audit.PlayerLimit}," +
+                    $"\"enableFarmhandCreation\":{JsonBool(audit.EnableFarmhandCreation)}," +
+                    $"\"isServer\":{JsonBool(audit.IsServer)}," +
+                    $"\"serverReady\":{JsonBool(audit.ServerReady)}," +
+                    $"\"issueCode\":{(audit.IssueCode == null ? "null" : JsonString(audit.IssueCode))}," +
+                    $"\"issueMessage\":{(audit.IssueMessage == null ? "null" : JsonString(audit.IssueMessage))}" +
+                    "}";
+            }
+            catch (Exception ex)
+            {
+                return "{" +
+                    "\"available\":false," +
+                    $"\"error\":{JsonString(ex.Message)}" +
+                    "}";
+            }
+        }
+
+        private sealed class FarmhandSlotAudit
+        {
+            public int CabinCount;
+            public int EmptyCabinCount;
+            public int OfflineFarmhandCount;
+            public int OnlineFarmhandCount;
+            public int EstimatedFreeSlots;
+            public int PlayerLimit;
+            public bool EnableFarmhandCreation;
+            public bool IsServer;
+            public bool ServerReady;
+            public string IssueCode;
+            public string IssueMessage;
+        }
+
+        private FarmhandSlotAudit BuildFarmhandSlotAudit()
+        {
+            var audit = new FarmhandSlotAudit
+            {
+                IsServer = Game1.IsServer,
+                ServerReady = Game1.IsServer && Game1.server != null,
+                EnableFarmhandCreation = Game1.options?.enableFarmhandCreation ?? false,
+                PlayerLimit = 0,
+            };
+
+            audit.PlayerLimit = TryGetMultiplayerLimit();
+            if (audit.PlayerLimit < 1 || audit.PlayerLimit > 8)
+                audit.PlayerLimit = ReadDesiredPlayerLimit();
+
+            HashSet<long> onlineIds = new HashSet<long>(
+                Game1.getOnlineFarmers()
+                    .Where(f => f != null && f.UniqueMultiplayerID != Game1.player?.UniqueMultiplayerID)
+                    .Select(f => f.UniqueMultiplayerID));
+
+            audit.OnlineFarmhandCount = onlineIds.Count;
+
+            Farm farm = Game1.getFarm();
+            if (farm?.buildings != null)
+            {
+                foreach (Building building in farm.buildings)
+                {
+                    if (building == null || !IsCabinBuilding(building))
+                        continue;
+
+                    audit.CabinCount++;
+                    Farmer farmhand = GetCabinFarmhand(building);
+                    if (farmhand == null || IsEmptyFarmhandSlot(farmhand))
+                    {
+                        audit.EmptyCabinCount++;
+                        continue;
+                    }
+
+                    if (!onlineIds.Contains(farmhand.UniqueMultiplayerID))
+                        audit.OfflineFarmhandCount++;
+                }
+            }
+
+            // Free join capacity:
+            // - empty cabins can accept new farmhands when creation is enabled
+            // - offline farmhands remain selectable rejoin slots
+            int softCapacity = Math.Max(0, Math.Min(audit.PlayerLimit, 8) - 1);
+            int cabinCapacity = audit.CabinCount > 0 ? Math.Min(softCapacity, audit.CabinCount) : softCapacity;
+            int occupiedOnline = audit.OnlineFarmhandCount;
+            int rejoinable = audit.OfflineFarmhandCount;
+            int creatable = audit.EnableFarmhandCreation ? audit.EmptyCabinCount : 0;
+            audit.EstimatedFreeSlots = Math.Max(0, Math.Min(cabinCapacity - occupiedOnline, rejoinable + creatable));
+
+            if (!audit.IsServer)
+            {
+                audit.IssueCode = "not_main_server";
+                audit.IssueMessage = "World is loaded but this client is not the multiplayer host/server. Clients will not see free farmhand slots.";
+            }
+            else if (!audit.ServerReady)
+            {
+                audit.IssueCode = "multiplayer_not_initialized";
+                audit.IssueMessage = "Host mode is active but Game1.server is null. Use native Co-op Host load (ServerAutoLoad v2).";
+            }
+            else if (audit.CabinCount == 0)
+            {
+                audit.IssueCode = "no_cabins";
+                audit.IssueMessage = "No Cabin buildings were found on the farm. Build empty cabins or raise cabin count.";
+            }
+            else if (audit.EstimatedFreeSlots <= 0)
+            {
+                audit.IssueCode = "no_free_farmhand_slots";
+                audit.IssueMessage =
+                    $"Runtime free farmhand slots are 0 (cabins={audit.CabinCount}, empty={audit.EmptyCabinCount}, " +
+                    $"offline={audit.OfflineFarmhandCount}, online={audit.OnlineFarmhandCount}, playerLimit={audit.PlayerLimit}).";
+            }
+            else if (audit.EmptyCabinCount > 0 && !audit.EnableFarmhandCreation)
+            {
+                audit.IssueCode = "farmhand_creation_disabled";
+                audit.IssueMessage = "Empty cabins exist but enableFarmhandCreation is false, so brand-new players cannot claim them.";
+            }
+
+            return audit;
+        }
+
+        private static bool IsCabinBuilding(Building building)
+        {
+            if (building is Cabin)
+                return true;
+
+            string typeName = building.GetType().Name;
+            if (string.Equals(typeName, "Cabin", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            try
+            {
+                string buildingType = building.buildingType?.Value;
+                if (string.Equals(buildingType, "Cabin", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return false;
+        }
+
+        private static Farmer GetCabinFarmhand(Building building)
+        {
+            if (building is Cabin cabin)
+            {
+                try
+                {
+                    // 1.6: Cabin.farmhand is a NetRef<Farmer>
+                    FieldInfo field = typeof(Cabin).GetField("farmhand", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (field != null)
+                    {
+                        object netRef = field.GetValue(cabin);
+                        if (netRef != null)
+                        {
+                            PropertyInfo valueProp = netRef.GetType().GetProperty("Value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                            if (valueProp?.GetValue(netRef) is Farmer fromField)
+                                return fromField;
+                        }
+                    }
+                }
+                catch
+                {
+                    // fall through
+                }
+
+                try
+                {
+                    PropertyInfo prop = typeof(Cabin).GetProperty("farmhand", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                        ?? typeof(Cabin).GetProperty("Farmhand", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (prop != null)
+                    {
+                        object value = prop.GetValue(cabin);
+                        if (value is Farmer farmer)
+                            return farmer;
+
+                        PropertyInfo valueProp = value?.GetType().GetProperty("Value");
+                        if (valueProp?.GetValue(value) is Farmer nested)
+                            return nested;
+                    }
+                }
+                catch
+                {
+                    // fall through
+                }
+            }
+
+            try
+            {
+                GameLocation indoors = building.GetIndoors();
+                if (indoors != null)
+                {
+                    // Some builds store farmhand ownership on the indoor cabin location.
+                    PropertyInfo ownerProp = indoors.GetType().GetProperty("farmhand", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                        ?? indoors.GetType().GetProperty("owner", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (ownerProp?.GetValue(indoors) is Farmer owner)
+                        return owner;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return null;
+        }
+
+        private static bool IsEmptyFarmhandSlot(Farmer farmhand)
+        {
+            if (farmhand == null)
+                return true;
+
+            // Unclaimed/new farmhand placeholders usually have no usable display name yet.
+            string name = farmhand.Name ?? "";
+            if (string.IsNullOrWhiteSpace(name) || name == "Farmhand" || name.StartsWith("Farmhand", StringComparison.OrdinalIgnoreCase))
+            {
+                // Still treat named placeholders carefully: only empty if they are not currently online.
+                try
+                {
+                    if (!farmhand.isCustomized.Value)
+                        return true;
+                }
+                catch
+                {
+                    if (string.IsNullOrWhiteSpace(name))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
         private void WriteGameStateBridge()
         {
             if (string.IsNullOrWhiteSpace(Config.GameStateFile))
@@ -1334,7 +1748,9 @@ namespace AutoHideHost
                 bool saving = worldReady && Game1.game1 != null && Game1.game1.IsSaving;
                 bool blockedByMenu = worldReady && Game1.activeClickableMenu != null;
                 bool blockedByEvent = worldReady && Game1.CurrentEvent != null && !Game1.CurrentEvent.skippable;
-                bool joinable = worldReady && isServer && multiplayerReady && !saving && !blockedByEvent && !blockedByMenu;
+                // Host menus (dialogue, level-up, large-mod prompts) do not block peer farmhand lists.
+                // Only treat hard multiplayer blockers as non-joinable so large mods don't false-report "full".
+                bool joinable = worldReady && isServer && multiplayerReady && !saving && !blockedByEvent;
                 string joinableReason = "ready";
 
                 if (!worldReady)
@@ -1348,7 +1764,7 @@ namespace AutoHideHost
                 else if (blockedByEvent)
                     joinableReason = "blocking_event";
                 else if (blockedByMenu)
-                    joinableReason = "menu_open";
+                    joinableReason = "ready_with_host_menu";
 
                 var players = worldReady
                     ? Game1.getOnlineFarmers().ToList()
@@ -1499,6 +1915,7 @@ namespace AutoHideHost
                 json.Append($"  \"multiplayerReady\": {JsonBool(multiplayerReady)},\n");
                 json.Append($"  \"joinable\": {JsonBool(joinable)},\n");
                 json.Append($"  \"joinableReason\": {JsonString(joinableReason)},\n");
+                json.Append($"  \"farmhandSlots\": {BuildFarmhandSlotAuditJson()},\n");
                 json.Append($"  \"saveName\": {JsonString(worldReady ? (Game1.player?.farmName.Value ?? "") : "")},\n");
                 json.Append($"  \"season\": {JsonString(worldReady ? Game1.currentSeason : "")},\n");
                 json.Append($"  \"day\": {(worldReady ? Game1.dayOfMonth : 0)},\n");

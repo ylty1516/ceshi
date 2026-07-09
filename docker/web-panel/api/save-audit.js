@@ -462,12 +462,18 @@ function buildSaveSlotAudit(options = {}) {
   const maxFarmhandsByLimit = Number.isFinite(playerLimit) ? Math.max(0, Math.min(playerLimit, 8) - 1) : null;
   const cabinCount = Number.isFinite(cabins.count) ? cabins.count : null;
   const farmhandCount = Number.isFinite(farmhands.count) ? farmhands.count : null;
+  // Capacity is the hard multiplayer farmhand ceiling after playerLimit and cabin count.
   const capacity = maxFarmhandsByLimit !== null && cabinCount !== null
     ? Math.min(maxFarmhandsByLimit, cabinCount)
     : null;
+  // Empty cabins that can accept brand-new farmhands (offline existing farmhands are still rejoinable).
+  const emptyCabinSlots = cabinCount !== null && farmhandCount !== null
+    ? Math.max(0, cabinCount - farmhandCount)
+    : null;
+  // Free NEW-farmhand slots after playerLimit. Offline farmhands are rejoinable separately.
   const estimatedFreeFarmhandSlots = capacity !== null && farmhandCount !== null
     ? Math.max(0, capacity - farmhandCount)
-    : null;
+    : emptyCabinSlots;
   const autoLoadState = readServerAutoLoadState();
 
   const audit = {
@@ -507,6 +513,7 @@ function buildSaveSlotAudit(options = {}) {
       cabinCount,
       farmhandCount,
       capacity,
+      emptyCabinSlots,
       estimatedFreeFarmhandSlots,
       enableFarmhandCreation: startupPreferences.enableFarmhandCreation,
     },

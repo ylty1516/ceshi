@@ -1,8 +1,8 @@
 {
   "Name": "Server Auto Load",
   "Author": "ylty",
-  "Version": "2.0.0",
-  "Description": "Loads the configured save through Stardew Valley's native Co-op Host menu flow so multiplayer slots are initialized correctly.",
+  "Version": "2.0.1",
+  "Description": "Loads the configured save through Stardew Valley's native Co-op Host menu flow so multiplayer slots are initialized correctly, and verifies host/server readiness after load.",
   "UniqueID": "puppystardew.ServerAutoLoad",
   "EntryDll": "ServerAutoLoad.dll",
   "MinimumApiVersion": "4.0.0",

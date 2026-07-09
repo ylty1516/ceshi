@@ -343,7 +343,9 @@ function buildPreset(tier, resources, workload) {
       RESOLUTION_HEIGHT: '480',
       REFRESH_RATE: '30',
       ENABLE_VNC: 'false',
-      MAX_PLAYERS: largeMods > 0 ? '2' : '3',
+      // Keep multiplayer cabin capacity usable. Lowering MAX_PLAYERS with large mods
+      // commonly causes "no free slots" while empty cabins still exist on the farm.
+      MAX_PLAYERS: '4',
       ENABLE_AUTO_BACKUP: availableGb !== null && availableGb >= 12 ? 'true' : 'false',
       MAX_BACKUPS: '2',
       PANEL_STATUS_CACHE_MS: '7000',
@@ -366,7 +368,7 @@ function buildPreset(tier, resources, workload) {
       RESOLUTION_HEIGHT: largeMods > 0 ? '540' : '576',
       REFRESH_RATE: '30',
       ENABLE_VNC: 'false',
-      MAX_PLAYERS: largeMods > 0 ? '3' : '4',
+      MAX_PLAYERS: '8',
       ENABLE_AUTO_BACKUP: 'true',
       MAX_BACKUPS: availableGb !== null && availableGb < 12 ? '3' : '5',
       PANEL_STATUS_CACHE_MS: '5000',
@@ -389,7 +391,7 @@ function buildPreset(tier, resources, workload) {
       RESOLUTION_HEIGHT: '720',
       REFRESH_RATE: '45',
       ENABLE_VNC: 'false',
-      MAX_PLAYERS: largeMods >= 2 ? '6' : '8',
+      MAX_PLAYERS: '8',
       ENABLE_AUTO_BACKUP: 'true',
       MAX_BACKUPS: availableGb !== null && availableGb < 16 ? '5' : '7',
       PANEL_STATUS_CACHE_MS: '4000',
@@ -438,10 +440,10 @@ function buildPreset(tier, resources, workload) {
     {
       severity: largeMods > 0 ? 'warn' : 'info',
       message: largeMods > 0
-        ? `检测到 ${largeMods} 个大型内容 Mod，建议降低 FPS 和同时在线人数。`
+        ? `检测到 ${largeMods} 个大型内容 Mod，建议降低 FPS 并确保玩家安装 /player-mods 整包；不要为了省资源把 MAX_PLAYERS 压到低于小屋数，否则会出现“有空小屋却无空位”。`
         : `当前大型内容 Mod 压力不高，按常规档位推荐。`,
       messageEn: largeMods > 0
-        ? `Detected ${largeMods} large content mod(s); lower FPS and player count are recommended.`
+        ? `Detected ${largeMods} large content mod(s); lower FPS and require the /player-mods pack. Do not drop MAX_PLAYERS below cabin capacity or clients will see no free slots while empty cabins still exist.`
         : 'Large content mod pressure looks low, using the standard preset.',
     },
   ];
@@ -457,8 +459,8 @@ function buildPreset(tier, resources, workload) {
   if (memoryMb < 2048 && largeMods > 0) {
     reasons.push({
       severity: 'warn',
-      message: '内存低于 2GB 且安装了大型 Mod，玩家人数建议控制在 2 人左右。',
-      messageEn: 'Memory is below 2GB with large mods installed; keep real players around 2.',
+      message: '内存低于 2GB 且安装了大型 Mod：优先降 FPS/关 VNC，而不是把 MAX_PLAYERS 压到 2。过低的人数上限会让空闲小屋也无法加入。',
+      messageEn: 'Memory is below 2GB with large mods: prefer lower FPS / disable VNC instead of forcing MAX_PLAYERS=2. A too-low player limit makes empty cabins unusable.',
     });
   }
 
