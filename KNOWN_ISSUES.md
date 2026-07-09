@@ -82,21 +82,21 @@ After enabling large content mods (SVE, Ridgeside, East Scarp, etc.), clients ma
 **Why This Happens / 原因:**
 
 1. **Client mod mismatch (most common with large mods):** the host has content mods, the client does not (or has a different pack). The server can still send a farmhand list, but the client fails around `receiveAvailableFarmhands` and shows a misleading no-slot message.
-2. **MAX_PLAYERS too low:** older panel recommendations lowered `MAX_PLAYERS` to 2–3 under large-mod pressure. Empty cabins beyond that limit cannot be joined.
+2. **MAX_PLAYERS too low:** if `.env` has a low `MAX_PLAYERS`, empty cabins beyond that limit cannot be joined. The old panel recommendation card that suggested 2–3 players under large mods has been removed.
 3. **Host not truly in Co-op Host mode:** if the save was not loaded through native `Co-op -> Host`, multiplayer farmhand slots may stay empty even though cabin buildings exist.
 
 1. **客户端 Mod 不一致（大型 Mod 最常见）：** 服务端有内容 Mod，客户端没有或版本不同。服务端仍可能发出 farmhand 列表，但客户端在 `receiveAvailableFarmhands` 附近失败，并误报无空位。
-2. **MAX_PLAYERS 过低：** 旧版配置推荐在大型 Mod 压力下会把 `MAX_PLAYERS` 降到 2–3。超过人数上限的空闲小屋无法加入。
+2. **MAX_PLAYERS 过低：** `.env` 里人数上限过低时，超过上限的空闲小屋无法加入。旧版面板里会在大型 Mod 下建议 2–3 人的「配置推荐」卡片已删除。
 3. **未真正走 Co-op Host：** 若存档不是通过原生 `Co-op -> Host` 载入，多人 farmhand 席位可能为空，但小屋建筑仍然存在。
 
 **What changed / 改动:**
 
-- Config recommendations no longer crush `MAX_PLAYERS` for large mods.
-- AutoHideHost reports runtime free farmhand/cabin slots in `game-state.json`.
+- Removed the inaccurate server configuration recommendation card entirely.
+- AutoHideHost source reports runtime free farmhand/cabin slots in `game-state.json` (after DLL rebuild).
 - Join handshake diagnostics explicitly call out fake no-slot cases when runtime free cabins exist.
 
-- 配置推荐不再因大型 Mod 把 `MAX_PLAYERS` 压到不可用。
-- AutoHideHost 会把运行时空闲 farmhand/小屋席位写入 `game-state.json`。
+- 已删除不准确的「服务器配置推荐」整卡。
+- AutoHideHost 源码会把运行时空闲 farmhand/小屋席位写入 `game-state.json`（需重编译 DLL）。
 - 加入握手诊断在运行时仍有空闲小屋时，会明确提示这是假性“无空位”。
 
 **Required check / 必查:**

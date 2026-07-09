@@ -38,7 +38,6 @@ let lastFactoryResetStatus = null;
 let uninstallPoll = null;
 let lastUninstallStatus = null;
 let lastModsData = null;
-let lastServerRecommendations = null;
 
 const STATUS_REFRESH_MS = 5000;
 const PLAYERS_REFRESH_MS = 20000;
@@ -294,26 +293,6 @@ const translations = {
     'config.help.PANEL_PUBLIC_MOD_MANIFEST_CACHE_MS': '玩家 Mod 公共清单缓存时间。数值越大，玩家下载页越省资源。',
     'config.help.PANEL_MOD_EXTRACT_TIMEOUT_MS': '上传 Mod 组合包时，面板等待解压完成的最长时间。服务器慢或组合包大时可以适当调高。',
     'config.help.PANEL_COMMAND_TIMEOUT_MS': '面板执行轻量诊断命令的超时时间。小服务器建议保持较低。',
-    'recommend.title': '服务器配置推荐',
-    'recommend.refresh': '重新检测',
-    'recommend.apply': '应用到表单',
-    'recommend.copy': '复制 .env',
-    'recommend.loading': '正在检测服务器硬件和 Mod 压力...',
-    'recommend.loadFail': '读取推荐配置失败',
-    'recommend.generated': '生成于 {time}',
-    'recommend.tier': '推荐档位',
-    'recommend.cpu': 'CPU',
-    'recommend.memory': '内存',
-    'recommend.disk': '可用磁盘',
-    'recommend.mods': 'Mod 压力',
-    'recommend.modCount': '{count} 个 Mod',
-    'recommend.largeMods': '大型 Mod：{mods}',
-    'recommend.noLargeMods': '未检测到已知大型内容 Mod',
-    'recommend.changeCount': '{count} 项建议与当前配置不同',
-    'recommend.allApplied': '当前配置已经符合推荐项',
-    'recommend.needsSave': '已应用到表单，点击“保存更改”并重启容器后生效。',
-    'recommend.copyOk': '推荐配置已复制。',
-    'recommend.copyFail': '复制失败，请手动选择 .env 内容。',
     'update.title': '面板一键更新',
     'update.button': '一键更新',
     'update.runningButton': '更新中',
@@ -668,26 +647,6 @@ const translations = {
     'config.help.PANEL_PUBLIC_MOD_MANIFEST_CACHE_MS': 'Cache time for the public player mod manifest. Higher values reduce load on the player download page.',
     'config.help.PANEL_MOD_EXTRACT_TIMEOUT_MS': 'Maximum time the panel waits while extracting an uploaded mod pack. Raise this for slow servers or large packs.',
     'config.help.PANEL_COMMAND_TIMEOUT_MS': 'Timeout for lightweight diagnostic commands. Keep it low on small servers.',
-    'recommend.title': 'Server Configuration Recommendation',
-    'recommend.refresh': 'Detect Again',
-    'recommend.apply': 'Apply to Form',
-    'recommend.copy': 'Copy .env',
-    'recommend.loading': 'Detecting server hardware and mod pressure...',
-    'recommend.loadFail': 'Failed to load recommendations',
-    'recommend.generated': 'Generated at {time}',
-    'recommend.tier': 'Recommended tier',
-    'recommend.cpu': 'CPU',
-    'recommend.memory': 'Memory',
-    'recommend.disk': 'Free disk',
-    'recommend.mods': 'Mod pressure',
-    'recommend.modCount': '{count} mod(s)',
-    'recommend.largeMods': 'Large mods: {mods}',
-    'recommend.noLargeMods': 'No known large content mods detected',
-    'recommend.changeCount': '{count} recommendation(s) differ from current config',
-    'recommend.allApplied': 'Current config already matches the recommendation',
-    'recommend.needsSave': 'Applied to the form. Click "Save Changes" and restart the container to take effect.',
-    'recommend.copyOk': 'Recommended config copied.',
-    'recommend.copyFail': 'Copy failed. Select the .env text manually.',
     'update.title': 'Panel Update',
     'update.button': 'One-click Update',
     'update.runningButton': 'Updating',
@@ -904,9 +863,6 @@ function applyTranslations() {
   }
   if (lastChangelogData) {
     renderChangelog(lastChangelogData);
-  }
-  if (lastServerRecommendations) {
-    renderServerRecommendations(lastServerRecommendations);
   }
 }
 
@@ -2363,16 +2319,6 @@ async function loadConfig() {
   const container = document.getElementById('configContainer');
   container.innerHTML = '';
 
-  const recommendationCard = document.createElement('div');
-  recommendationCard.id = 'serverRecommendationCard';
-  recommendationCard.className = 'card recommendation-card';
-  container.appendChild(recommendationCard);
-  if (lastServerRecommendations) {
-    renderServerRecommendations(lastServerRecommendations);
-  } else {
-    renderServerRecommendationLoading();
-  }
-
   const saveToolbar = document.createElement('div');
   saveToolbar.id = 'configSaveToolbar';
   saveToolbar.className = 'card config-save-toolbar';
@@ -2451,213 +2397,6 @@ async function loadConfig() {
   saveBtn.className = 'config-save-row';
   saveBtn.innerHTML = '<button class="btn btn-success save-config-btn" type="button" onclick="saveConfig()" disabled>' + icon('config', 'icon') + '<span>' + escapeHtml(t('config.saveChanges')) + '</span></button>';
   container.appendChild(saveBtn);
-
-  loadServerRecommendations(true);
-}
-
-function renderServerRecommendationLoading() {
-  const card = document.getElementById('serverRecommendationCard');
-  if (!card) return;
-  card.innerHTML =
-    '<div class="recommendation-header">' +
-      '<div>' +
-        '<div class="config-group-title">' + escapeHtml(t('recommend.title')) + '</div>' +
-        '<div class="recommendation-summary">' + escapeHtml(t('recommend.loading')) + '</div>' +
-      '</div>' +
-      '<button class="btn btn-sm" type="button" onclick="loadServerRecommendations(false)" disabled>' + icon('refresh', 'icon') + '<span>' + escapeHtml(t('recommend.refresh')) + '</span></button>' +
-    '</div>';
-}
-
-function formatRecommendationBytes(bytes) {
-  return Number.isFinite(bytes) && bytes > 0 ? formatSize(bytes) : '--';
-}
-
-function escapeSelectorValue(value) {
-  const str = String(value || '');
-  if (window.CSS && typeof window.CSS.escape === 'function') {
-    return window.CSS.escape(str);
-  }
-  return str.replace(/["\\]/g, '\\$&');
-}
-
-function getRecommendationReasonText(reason) {
-  if (!reason) return '';
-  return currentLang === 'zh'
-    ? (reason.message || reason.messageEn || '')
-    : (reason.messageEn || reason.message || '');
-}
-
-function getRecommendationTierLabel(tier) {
-  if (!tier) return '--';
-  return currentLang === 'zh'
-    ? (tier.label || tier.labelEn || tier.key || '--')
-    : (tier.labelEn || tier.label || tier.key || '--');
-}
-
-function getRecommendationTierSummary(tier) {
-  if (!tier) return '';
-  return currentLang === 'zh'
-    ? (tier.summary || tier.summaryEn || '')
-    : (tier.summaryEn || tier.summary || '');
-}
-
-function renderServerRecommendations(data) {
-  const card = document.getElementById('serverRecommendationCard');
-  if (!card) return;
-
-  if (!data || data.error) {
-    card.innerHTML =
-      '<div class="recommendation-header">' +
-        '<div>' +
-          '<div class="config-group-title">' + escapeHtml(t('recommend.title')) + '</div>' +
-          '<div class="recommendation-summary error">' + escapeHtml(formatApiError(data, t('recommend.loadFail'))) + '</div>' +
-        '</div>' +
-        '<button class="btn btn-sm" type="button" onclick="loadServerRecommendations(false)">' + icon('refresh', 'icon') + '<span>' + escapeHtml(t('recommend.refresh')) + '</span></button>' +
-      '</div>';
-    return;
-  }
-
-  const cpu = data.resources?.cpu || {};
-  const memory = data.resources?.memory || {};
-  const disk = data.resources?.disk || {};
-  const workload = data.workload || {};
-  const recommendations = data.recommendations || {};
-  const reasons = Array.isArray(recommendations.reasons) ? recommendations.reasons : [];
-  const changes = Array.isArray(recommendations.changes) ? recommendations.changes : [];
-  const changedCount = typeof recommendations.changedCount === 'number'
-    ? recommendations.changedCount
-    : changes.filter(item => !item.alreadyApplied).length;
-  const largeMods = Array.isArray(workload.largeContentMods) ? workload.largeContentMods : [];
-  const generatedAt = data.generatedAt
-    ? new Date(data.generatedAt).toLocaleString(currentLang === 'zh' ? 'zh-CN' : 'en-US')
-    : '--';
-
-  const metrics = [
-    { label: t('recommend.cpu'), value: (cpu.effectiveCores ? cpu.effectiveCores.toFixed(1) : '--') + ' / ' + (cpu.source || '--') },
-    { label: t('recommend.memory'), value: formatRecommendationBytes(memory.effectiveBytes) },
-    { label: t('recommend.disk'), value: formatRecommendationBytes(disk.availableBytes) },
-    {
-      label: t('recommend.mods'),
-      value: tf('recommend.modCount', { count: String(workload.modCount || 0) }),
-    },
-  ];
-
-  const modPressureText = largeMods.length > 0
-    ? tf('recommend.largeMods', { mods: largeMods.map(item => item.label || item.key).join(', ') })
-    : t('recommend.noLargeMods');
-  const changeText = changedCount > 0
-    ? tf('recommend.changeCount', { count: String(changedCount) })
-    : t('recommend.allApplied');
-
-  card.innerHTML =
-    '<div class="recommendation-header">' +
-      '<div>' +
-        '<div class="config-group-title">' + escapeHtml(t('recommend.title')) + '</div>' +
-        '<div class="recommendation-title-line">' +
-          '<span>' + escapeHtml(t('recommend.tier')) + ': ' + escapeHtml(getRecommendationTierLabel(data.tier)) + '</span>' +
-          '<span class="recommendation-pill">' + escapeHtml(changeText) + '</span>' +
-        '</div>' +
-        '<div class="recommendation-summary">' + escapeHtml(getRecommendationTierSummary(data.tier)) + '</div>' +
-        '<div class="recommendation-generated">' + escapeHtml(tf('recommend.generated', { time: generatedAt })) + '</div>' +
-      '</div>' +
-      '<div class="recommendation-actions">' +
-        '<button class="btn btn-sm" type="button" onclick="loadServerRecommendations(false)">' + icon('refresh', 'icon') + '<span>' + escapeHtml(t('recommend.refresh')) + '</span></button>' +
-        '<button class="btn btn-sm btn-primary" type="button" onclick="applyServerRecommendations()">' + icon('config', 'icon') + '<span>' + escapeHtml(t('recommend.apply')) + '</span></button>' +
-        '<button class="btn btn-sm btn-muted" type="button" onclick="copyServerRecommendationEnv()">' + icon('download', 'icon') + '<span>' + escapeHtml(t('recommend.copy')) + '</span></button>' +
-      '</div>' +
-    '</div>' +
-    '<div class="recommendation-metrics">' +
-      metrics.map(item =>
-        '<div class="recommendation-metric">' +
-          '<div class="recommendation-metric-label">' + escapeHtml(item.label) + '</div>' +
-          '<div class="recommendation-metric-value">' + escapeHtml(item.value) + '</div>' +
-        '</div>'
-      ).join('') +
-    '</div>' +
-    '<div class="recommendation-summary">' + escapeHtml(modPressureText) + '</div>' +
-    (reasons.length > 0
-      ? '<div class="recommendation-reasons">' + reasons.map(reason =>
-        '<div class="recommendation-reason ' + escapeHtml(reason.severity || 'info') + '">' + escapeHtml(getRecommendationReasonText(reason)) + '</div>'
-      ).join('') + '</div>'
-      : '') +
-    '<div class="recommendation-env-list">' +
-      changes.map(change =>
-        '<div class="recommendation-env-row ' + (change.alreadyApplied ? 'applied' : '') + '">' +
-          '<span class="recommendation-env-key">' + escapeHtml(change.key) + '</span>' +
-          '<span class="recommendation-env-value">' + escapeHtml(change.recommended || '') + '</span>' +
-        '</div>'
-      ).join('') +
-    '</div>';
-}
-
-async function loadServerRecommendations(silent) {
-  if (!silent) {
-    renderServerRecommendationLoading();
-  }
-
-  try {
-    const data = await API.get('/api/recommendations/server');
-    if (!data) return;
-    lastServerRecommendations = data;
-    renderServerRecommendations(data);
-    if (data.error && !silent) {
-      showToast(formatApiError(data, t('recommend.loadFail')), 'error', 7000);
-    }
-  } catch (error) {
-    const failed = { error: error.message || t('recommend.loadFail') };
-    lastServerRecommendations = failed;
-    renderServerRecommendations(failed);
-    if (!silent) {
-      showToast(formatApiError(failed, t('recommend.loadFail')), 'error', 7000);
-    }
-  }
-}
-
-function applyServerRecommendations() {
-  const env = lastServerRecommendations?.recommendations?.env;
-  if (!env || typeof env !== 'object') return;
-
-  let applied = 0;
-  for (const [key, value] of Object.entries(env)) {
-    const control = document.querySelector('[data-key="' + escapeSelectorValue(key) + '"]');
-    if (!control) continue;
-
-    if (control.type === 'checkbox') {
-      control.checked = String(value) === 'true';
-    } else {
-      control.value = String(value);
-    }
-    applied += 1;
-  }
-
-  if (applied > 0) {
-    configChanged();
-    showToast(t('recommend.needsSave'), 'success', 6500);
-  }
-}
-
-async function copyServerRecommendationEnv() {
-  const text = lastServerRecommendations?.recommendations?.copyText || '';
-  if (!text) return;
-
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      textarea.remove();
-    }
-    showToast(t('recommend.copyOk'), 'success');
-  } catch (error) {
-    showToast(t('recommend.copyFail'), 'error', 5000);
-  }
 }
 
 function getPanelUpdateState(status) {
